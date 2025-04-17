@@ -1,0 +1,83 @@
+# experiments/run_experiment.py
+import argparse
+import numpy as np
+import sys
+sys.path.append('../')
+from utils.data_loading import load_dataset  # Function to load train/val/test sets
+from utils.hyperparameter_tuning import tune_hyperparameters, train_model  # Function to perform hyperparameter tuning
+from utils.evaluation import evaluate_model
+#from utils.evaluation import evaluate_model  # Evaluation function for your models
+from utils.logger import ExperimentLogger
+from config import GLOBAL_CONFIG
+
+# Import model modules
+from models import lstm_model, tcn_model
+
+def main(args):
+    # Load dataset (should return train, validation, and test sets)
+    train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir)
+    
+    # Select the model based on the command-line argument
+    if args.model == 'lstm':
+        ModelClass = lstm_model.LSTMModel
+    elif args.model == 'tcn':
+        ModelClass = tcn_model.TCN_model
+    else:
+        raise ValueError("Unsupported model type")
+    
+    logger = ExperimentLogger()
+    logger.set_global_config = GLOBAL_CONFIG
+    # Hyperparameter tuning (using train and validation sets)
+    best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, args.model, logger)
+    print("Best hyperparameters found:", best_config)
+    
+    import numpy as np
+
+    if args.evaluate:
+        test_metrics_list = []
+        for run in range(args.num_runs):
+            # Initialize a fresh model instance with best_config.
+            model = ModelClass(**best_config)
+            train_model(model, full_training_data, None)
+            logger.log_full_training_history(model.training_history)
+            # Evaluate model performance on the test set.
+            # Assume evaluate_model returns a dictionary of metrics.
+            run_metrics = evaluate_model(model, test_data)
+            test_metrics_list.append(run_metrics)
+            logger.log_test_result(run_metrics)
+            print(f"Run {run+1}/{args.num_runs}: Test Metrics: {run_metrics}")
+        
+        # Aggregate the metrics across runs.
+        # Assuming each run_metrics is a dictionary with the same keys.
+        metric_keys = test_metrics_list[0].keys()
+        aggregated_metrics = {}
+        aggregated_std = {}
+        
+        for key in metric_keys:
+            # Gather each metric's value from each run.
+            values = [metrics[key] for metrics in test_metrics_list]
+            aggregated_metrics[key] = np.mean(values)
+            aggregated_std[key] = np.std(values)
+        
+        logger.log_final_test_results(aggregated_metrics, aggregated_std)
+        # Print aggregated metrics.
+        print(f"Final Test Performance over {args.num_runs} runs:")
+        for key in metric_keys:
+            print(f"{key}: Mean = {aggregated_metrics[key]:.4f}, Std = {aggregated_std[key]:.4f}")
+    else:
+        print("Evaluation on the test set is disabled. Only hyperparameter tuning was performed.")
+
+    logger.save()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Run time series model experiments")
+    parser.add_argument('--model', type=str, default='lstm', help='Model type (lstm, tcn, rf)')
+    parser.add_argument('--data_dir', type=str, required=True, help='Directory containing the dataset')
+    parser.add_argument('--tuning_iterations', type=int, default=50, help='Number of hyperparameter tuning iterations')
+    parser.add_argument('--num_runs', type=int, default=30, help='Number of final evaluation runs on test set')
+    parser.add_argument('--evaluate', action=argparse.BooleanOptionalAction, help="If set, perform evaluation on the test set")
+    parser.set_defaults(evaluate=False)
+    
+    args = parser.parse_args()
+    main(args)
