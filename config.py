@@ -18,8 +18,8 @@ def sample_lstm_config():
         "bi_lstm": False,
         "dropout_lstm": random.choice([0.0, 0.1]),
         "dropout_fc": random.choice([0.0,0.1, 0.2]),
-        "num_epochs": random.choice([100,300]),
-        "learning_rate": random.choice([1e-3, 1e-4, 5e-4]),
+        "num_epochs": random.choice([50, 100]),
+        "learning_rate": random.choice([1e-3]),
         "weight_decay": random.choice([0.0, 1e-5]),
     }
     return config
@@ -44,7 +44,7 @@ def sample_tcn_config():
     config = {
         "input_channels": 2,
         "num_classes": 4,
-        "num_epochs": random.choice([50, 100, 200, 300]),
+        "num_epochs": random.choice([50, 100]),
         "learning_rate": random.choice([0.001, 0.005, 5e-4]),
         "num_levels": random.choice([3, 6, 9, 12, 20]),
         "kernel_size": random.choice([1,3,5,10]),
