@@ -46,9 +46,9 @@ def sample_tcn_config():
         "num_classes": 4,
         "num_epochs": random.choice([50, 100]),
         "learning_rate": random.choice([0.001, 0.005, 5e-4]),
-        "num_levels": random.choice([3, 6, 9, 12, 20]),
+        "num_levels": random.choice([3, 6, 9, 12, 16]),
         "kernel_size": random.choice([1,3,5,10]),
-        "dropout": random.choice([0, 0.3]),
+        "dropout": random.choice([0, 0.2]),
         "num_filters": random.choice([8,16,32]),
         "weight_decay": random.choice([0,1e-5]),
     }

@@ -24,7 +24,7 @@ class ExperimentLogger:
             "global_config": {},
             "hp_tuning": [],          # List of dicts: hyperparameter set, per-epoch history and final validation metrics
             "best_hyperparameters": {}, 
-            "full_training_history": {},  # Epoch-level metrics when training on full training+validation set with best hyperparams
+            "full_training_history": [],  # Epoch-level metrics when training on full training+validation set with best hyperparams
             "test_results": [],       # List of dicts for each test run results
             "final_avg_res": {},
             "final_std_res": {},
@@ -72,7 +72,7 @@ class ExperimentLogger:
         Args:
             epoch_history (list[dict]): A list of epoch metrics for the full training run.
         """
-        self.log_data["full_training_history"] = epoch_history
+        self.log_data["full_training_history"].append(epoch_history)
 
     def log_test_result(self, test_result):
         """
