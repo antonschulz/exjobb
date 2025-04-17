@@ -5,6 +5,7 @@ import numpy as np
 from config import hyperparameter_spaces  # Import the mapping from model type to sampling functions
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, hamming_loss
 from .evaluation import evaluate_model
+import torch
 
 def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, model_type, logger=None):
     """
@@ -22,6 +23,9 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
     """
     best_config = None
     best_metrics = {'accuracy': -float('inf')}  # Assuming higher is better (e.g., accuracy)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+
 
     for i in range(tuning_iterations):
         # Sample a configuration for the given model type using the function defined in your config module.
@@ -30,7 +34,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         hp_config = config
 
         # Instantiate the model using the sampled configuration.
-        model = ModelClass(**config, logger=logger)
+        model = ModelClass(**config, logger=logger, device=device)
 
         # Train the model on the training data.
         train_model(model, train_data, val_data)  # You need to implement or import this function.

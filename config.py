@@ -10,10 +10,17 @@ def sample_lstm_config():
     Returns a dictionary with keys corresponding to hyperparameter names.
     """
     config = {
-        "learning_rate": random.choice([0.001, 0.0005, 0.0001]),
-        "hidden_size": random.choice([32, 64, 128]),
-        "num_layers": random.choice([1, 2, 3]),
-        "dropout": random.choice([0.1, 0.3, 0.5])
+        "input_size": 2,
+        "num_classes": 4,
+        "hidden_size": 64,
+        "num_layers": random.choice([2,4,8]),
+        "fc_units": [32],
+        "bi_lstm": False,
+        "dropout_lstm": 0.0,
+        "dropout_fc": 0.0,
+        "num_epochs": 50,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.0,
     }
     return config
 
@@ -47,11 +54,19 @@ def sample_tcn_config():
     }
     return config
 
+def sample_rocket_config():
+    config = {
+        "num_kernels": 10000, 
+        "padding": 800,
+    }
+    return config
+
 
 hyperparameter_spaces = {
     "lstm": sample_lstm_config,
     "tcn": sample_tcn_config,
-    "rf": sample_rf_config
+    "rf": sample_rf_config,
+    "rocket": sample_rocket_config,
 }
 
 # ----- Global configuration settings -----

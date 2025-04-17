@@ -9,19 +9,23 @@ from utils.evaluation import evaluate_model
 #from utils.evaluation import evaluate_model  # Evaluation function for your models
 from utils.logger import ExperimentLogger
 from config import GLOBAL_CONFIG
+import torch
 
 # Import model modules
-from models import lstm_model, tcn_model
+from models import lstm_model, tcn_model, rocket_model
 
 def main(args):
     # Load dataset (should return train, validation, and test sets)
     train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Select the model based on the command-line argument
     if args.model == 'lstm':
-        ModelClass = lstm_model.LSTMModel
+        ModelClass = lstm_model.LSTM_model
     elif args.model == 'tcn':
         ModelClass = tcn_model.TCN_model
+    elif args.model == 'rocket':
+        ModelClass = rocket_model.Rocket_model
     else:
         raise ValueError("Unsupported model type")
     
@@ -37,7 +41,7 @@ def main(args):
         test_metrics_list = []
         for run in range(args.num_runs):
             # Initialize a fresh model instance with best_config.
-            model = ModelClass(**best_config)
+            model = ModelClass(**best_config, device=device)
             train_model(model, full_training_data, None)
             logger.log_full_training_history(model.training_history)
             # Evaluate model performance on the test set.
