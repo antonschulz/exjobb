@@ -1,0 +1,9 @@
+other
+logs
+datasets/examples
+datasets/FBD-SV-2024
+datasets/insects-tracks
+*.ipynb
+*.pt
+*pth
+*__pycache__
