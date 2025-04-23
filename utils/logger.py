@@ -21,14 +21,19 @@ class ExperimentLogger:
         
         # Structure for storing logs.
         self.log_data = {
+            "run_args": {},
             "global_config": {},
             "hp_tuning": [],          # List of dicts: hyperparameter set, per-epoch history and final validation metrics
             "best_hyperparameters": {}, 
+            "best_validation_metrics": {},
             "full_training_history": [],  # Epoch-level metrics when training on full training+validation set with best hyperparams
             "test_results": [],       # List of dicts for each test run results
             "final_avg_res": {},
             "final_std_res": {},
         }
+
+    def set_run_args(self, run_args):
+        self.log_data["run_args"] = vars(run_args)
 
     def set_global_config(self, config):
         """
@@ -63,6 +68,9 @@ class ExperimentLogger:
             hyperparams (dict): The best hyperparameter set.
         """
         self.log_data["best_hyperparameters"] = hyperparams
+    
+    def set_best_validation_metric(self, metrics):
+        self.log_data["best_validation_metrics"] = metrics
 
     def log_full_training_history(self, epoch_history):
         """
@@ -99,9 +107,13 @@ class ExperimentLogger:
 if __name__ == "__main__":
     logger = ExperimentLogger(run_id="example_run")
     logger.set_global_config({
-        "num_epochs": 100,
-        "batch_size": 32,
-        "learning_rate": 0.001
+    "diff": True, # calculate and scale difference between x,y coordinates
+    "scaler": None, # scaler for difference between coordinates, None => standardscaler
+    "tuning_iterations": 50,    # Total iterations for hyperparameter tuning
+    "num_runs": 30,             # Number of final evaluation runs
+    "batch_size": 16,           # Batch size for deep learning experiments
+    "data_dir": "../datasets/it-trajs",      # Default path to the dataset directory
+    "random_seed": 42           # Global random seed for reproducibility
     })
 
     # Simulate logging one hyperparameter set tuning:
@@ -115,6 +127,7 @@ if __name__ == "__main__":
     
     # Set best hyperparameters
     logger.set_best_hyperparameters(hp_config)
+    logger.set_best_validation_metric(final_val)
     
     # Log full training history for the best hyperparams
     full_train_hist = [

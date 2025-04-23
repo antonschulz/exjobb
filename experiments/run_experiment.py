@@ -16,7 +16,7 @@ from models import lstm_model, tcn_model, rocket_model
 
 def main(args):
     # Load dataset (should return train, validation, and test sets)
-    train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir)
+    train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir, diff=args.diff, scaler=args.scaler)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Select the model based on the command-line argument
@@ -29,10 +29,12 @@ def main(args):
     else:
         raise ValueError("Unsupported model type")
     
-    logger = ExperimentLogger()
-    logger.set_global_config = GLOBAL_CONFIG
+    logger = ExperimentLogger(run_id=args.run_id)
+    logger.set_run_args(args)
+    logger.set_global_config(GLOBAL_CONFIG)
     # Hyperparameter tuning (using train and validation sets)
-    best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, args.model, logger)
+    model_parameter_space_name = f"{args.model}-default" if args.default_model else args.model
+    best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, model_parameter_space_name, logger)
     print("Best hyperparameters found:", best_config)
     
     import numpy as np
@@ -79,9 +81,25 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, default='lstm', help='Model type (lstm, tcn, rf)')
     parser.add_argument('--data_dir', type=str, required=True, help='Directory containing the dataset')
     parser.add_argument('--tuning_iterations', type=int, default=50, help='Number of hyperparameter tuning iterations')
+    parser.add_argument('--default_model', action=argparse.BooleanOptionalAction, help="If set, use only default hyperparameters for model")
     parser.add_argument('--num_runs', type=int, default=30, help='Number of final evaluation runs on test set')
     parser.add_argument('--evaluate', action=argparse.BooleanOptionalAction, help="If set, perform evaluation on the test set")
-    parser.set_defaults(evaluate=False)
+    parser.add_argument('--run_id', type=str, required=False, default=None, help='run_id for logger')
+    parser.add_argument('--diff', action=argparse.BooleanOptionalAction, help="If set, use diff between x,y and scaler")
+    parser.add_argument('--scaler', type=str, required=False, default=None, help='scaler string when diff is True. See util.py')
+    """
+        scalers = {
+        "standard": StandardScaler(),
+        "minmax":    MinMaxScaler(),
+        "robust":    RobustScaler(),
+        "maxabs":    MaxAbsScaler(),
+        "quantile":  QuantileTransformer(output_distribution="uniform"),
+        "power":     PowerTransformer(method="yeo-johnson"),
+    }
+    """
+
+    parser.set_defaults(evaluate=False, default_model=False, diff=False)
+    
     
     args = parser.parse_args()
     main(args)

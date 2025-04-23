@@ -54,6 +54,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
     print("Best hyperparameter configuration found:", best_config)
     print("Best validation metric:", best_metrics)
     logger.set_best_hyperparameters(best_config)
+    logger.set_best_validation_metric(best_metrics)
     return best_config
 
 

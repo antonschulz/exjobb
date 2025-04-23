@@ -76,7 +76,7 @@ class TCN(nn.Module):
         return out
     
 class TCN_model:
-    def __init__(self, input_channels, num_classes, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
+    def __init__(self, input_channels, num_classes, early_stopping=True, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
         """
         A wrapper that instantiates a TCN model and provides fit and predict methods.
         
@@ -93,6 +93,7 @@ class TCN_model:
         """
         self.num_epochs = num_epochs
         self.lr = learning_rate
+        self.early_stopping=early_stopping
         self.device = device if device is not None else torch.device("cpu")
         self.model = TCN(input_channels, num_classes, num_levels, kernel_size, dropout, num_filters)
         self.model.to(self.device)
@@ -100,6 +101,7 @@ class TCN_model:
         self.criterion = nn.CrossEntropyLoss()
         self.logger = logger
         self.training_history = [] # {"epoch": 1, "train_loss": 0.5, "train_acc": 80, "val_loss": 0.6, "val_acc": 78},
+
 
 
     def fit(self, train_dataset, val_dataset=None):
@@ -111,6 +113,10 @@ class TCN_model:
         Returns:
             self: So the method can be chained.
         """
+        patience = 5
+        epochs_no_improve = 0
+        min_delta = 1e-4
+        best_val_loss = float("inf")
         # define loaders
         train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
         if val_dataset is not None:
@@ -171,6 +177,21 @@ class TCN_model:
 
                 val_loss_epoch = running_val_loss / total_val
                 val_accuracy_epoch = (correct_val / total_val) * 100
+
+                            # --- check for improvement ---
+                if self.early_stopping:
+                    if best_val_loss - val_loss_epoch > min_delta:
+                        best_val_loss = val_loss_epoch
+                        epochs_no_improve = 0
+                        #best_model_state = model.state_dict()      # save best weights
+                    else:
+                        epochs_no_improve += 1
+                    
+                                    # --- early stopping check ---
+                    if epochs_no_improve >= patience:
+                        print(f"No improvement for {patience} epochs. Stopping early.")
+                        break
+
 
             # --- Logging ---
             # Log epoch-level metrics to your logger (assumes logger.log_epoch exists)

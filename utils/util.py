@@ -2,7 +2,9 @@
 import glob
 import os
 from typing import Dict, List, Optional, Tuple
+import numpy as np
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 import torch
 """
 Specification:
@@ -47,8 +49,13 @@ def interpolate_missing_values(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     df_interp = df_interp.interpolate(method='linear', limit_direction='both')
     return df_interp, num_missing
 
-def read_dataset(dirpath: str, interpolate: bool, normalize: bool, 
-                 screen_width: int = 1920, screen_height: int = 1080) -> Dict[str, Dict]:
+def read_dataset(
+    dirpath: str,
+    interpolate: bool,
+    normalize: bool,
+    screen_width: int = 1920,
+    screen_height: int = 1080,
+) -> Tuple[Dict[str, Dict], Optional[MinMaxScaler]]:
     """
     Reads CSV files from the specified directory and returns a dictionary of track dictionaries.
     Each track dictionary contains:
@@ -68,7 +75,6 @@ def read_dataset(dirpath: str, interpolate: bool, normalize: bool,
                          the filename, label, and processed DataFrame.
     """
     dataset = {}
-
     # Search for CSV files in the provided directory.
     for filepath in glob.glob(os.path.join(dirpath, "*.csv")):
         filename = os.path.basename(filepath)
@@ -113,5 +119,82 @@ def read_dataset(dirpath: str, interpolate: bool, normalize: bool,
             "label": label,
             "dataframe": clean_df
         }
-    
+
+
+
     return dataset
+
+from typing import Dict, Optional
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import (
+    StandardScaler,
+    MinMaxScaler,
+    RobustScaler,
+    MaxAbsScaler,
+    QuantileTransformer,
+    PowerTransformer,
+)
+
+def compute_and_scale_deltas(
+    dataset: Dict[str, Dict],
+    scaler: Optional[MinMaxScaler] = None,
+    scaler_str: str = None,
+) -> MinMaxScaler:
+    """
+    For each track in `dataset` (with keys 'filename', and values containing
+    at least 'dataframe': a DataFrame with columns ['x','y']), this function:
+    
+      1. Replaces the DataFrame with its first differences (Δx, Δy), filling NaN with 0.
+      2. Fits a MinMaxScaler (feature_range=(0,1)) on the concatenated deltas across all tracks
+         if no `scaler` is provided.
+      3. Transforms each track's delta-DataFrame in-place to the [0,1] range per feature.
+    
+    Args:
+        dataset: mapping filename -> {"dataframe": DataFrame[['x','y']], "label": ...}
+        scaler: Optional pre-fitted MinMaxScaler. If None, a new one is fit on this dataset.
+    
+    Returns:
+        The MinMaxScaler used to transform the data.
+    """
+    # 1) Compute first differences for each track
+    diff_frames = []
+    for info in dataset.values():
+        df = info['dataframe']
+        # Compute Δx, Δy and replace
+        df_diff = df.diff().fillna(0.0)
+        info['dataframe'] = df_diff
+        diff_frames.append(df_diff)
+
+    if not diff_frames:
+        raise ValueError("Dataset is empty; no dataframes to process.")
+
+    # 2) Stack all diffs to fit scaler if needed
+    all_deltas = pd.concat(diff_frames, axis=0)[['x','y']].values  # shape (sum_T, 2)
+
+    scalers = {
+        "standard": StandardScaler(),
+        "minmax":    MinMaxScaler(),
+        "robust":    RobustScaler(),
+        "maxabs":    MaxAbsScaler(),
+        "quantile":  QuantileTransformer(output_distribution="uniform"),
+        "power":     PowerTransformer(method="yeo-johnson"),
+    }
+    if scaler is None:
+        if scaler_str is None:
+            scaler_str = 'standard'
+        scaler = scalers[scaler_str]
+        scaler.fit(all_deltas)
+
+    # 3) Transform each track in-place
+    for info in dataset.values():
+        df_diff = info['dataframe']
+        scaled = scaler.transform(df_diff[['x','y']].values)
+        # put back into a DataFrame with same index
+        info['dataframe'] = pd.DataFrame(
+            scaled,
+            columns=['x','y'],
+            index=df_diff.index
+        )
+
+    return scaler

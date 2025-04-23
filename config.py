@@ -44,6 +44,7 @@ def sample_tcn_config():
     config = {
         "input_channels": 2,
         "num_classes": 4,
+        "early_stopping": True,
         "num_epochs": random.choice([200]),
         "learning_rate": random.choice([0.001, 0.005, 5e-4]),
         "num_levels": random.choice([3, 6, 9, 12, 16]),
@@ -61,19 +62,61 @@ def sample_rocket_config():
     }
     return config
 
+def default_lstm_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_size": 2,
+        "num_classes": 4,
+        "hidden_size": 64,
+        "num_layers": 3,
+        "fc_units": [32],
+        "bi_lstm": False,
+        "dropout_lstm": 0,
+        "dropout_fc": 0,
+        "num_epochs": 100,
+        "learning_rate": 1e-3,
+        "weight_decay": 0,
+    }
+    return config
+
+
+def default_tcn_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_channels": 2,
+        "num_classes": 4,
+        "early_stopping": True,
+        "num_epochs": 200,
+        "learning_rate": 0.0005,
+        "num_levels": 12,
+        "kernel_size": 5,
+        "dropout": 0,
+        "num_filters": 4,
+        "weight_decay": 0,
+    }
+    return config
+
+
 
 hyperparameter_spaces = {
     "lstm": sample_lstm_config,
     "tcn": sample_tcn_config,
     "rf": sample_rf_config,
     "rocket": sample_rocket_config,
+    # defaults
+    "lstm-default": default_lstm_config,
+    "tcn-default": default_tcn_config,
 }
 
 # ----- Global configuration settings -----
 
 GLOBAL_CONFIG = {
-    "tuning_iterations": 50,    # Total iterations for hyperparameter tuning
-    "num_runs": 30,             # Number of final evaluation runs
     "batch_size": 16,           # Batch size for deep learning experiments
     "data_dir": "../datasets/it-trajs",      # Default path to the dataset directory
     "random_seed": 42           # Global random seed for reproducibility

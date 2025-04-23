@@ -7,7 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
-from .util import read_dataset
+from .util import read_dataset, compute_and_scale_deltas
 import random
 
 # Custom Dataset with optional transform.
@@ -90,12 +90,13 @@ def collate_fn(batch):
     labels = torch.tensor(labels, dtype=torch.long)
     return padded_sequences, labels, lengths
 
-def load_dataset(data_dir: str) -> tuple[InsectDataset, InsectDataset, InsectDataset, InsectDataset]:
+def load_dataset(data_dir: str, diff: bool=False, scaler: str=None) -> tuple[InsectDataset, InsectDataset, InsectDataset, InsectDataset]:
     """
     Loads dataset in path data_dir. Assumes train/test folder exists in said directory.
     Defaults to 0.8/0.2 train/val split and 0.8/0.2 train,val/test split.
     """
     train_path, test_path = f'{data_dir}/train', f'{data_dir}/test'
+
     train_dict = read_dataset(train_path, interpolate=True, normalize=True)
     test_dict = read_dataset(test_path, interpolate=True, normalize=True)
 
@@ -114,6 +115,11 @@ def load_dataset(data_dir: str) -> tuple[InsectDataset, InsectDataset, InsectDat
     # Create train and test dictionaries from tracks_dict.
     tracks_dict_train = {fname: train_dict[fname] for fname in train_filenames}
     tracks_dict_val  = {fname: train_dict[fname] for fname in val_filenames}
+
+    if diff:
+        scaler = compute_and_scale_deltas(tracks_dict_train, scaler_str=scaler)
+        _ = compute_and_scale_deltas(tracks_dict_val, scaler=scaler)
+        _ = compute_and_scale_deltas(test_dict, scaler=scaler)
 
     # Create training dataset with augmentation.
     train_dataset = InsectDataset(tracks_dict_train, transform=augment_sequence)
