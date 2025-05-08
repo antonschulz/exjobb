@@ -41,56 +41,64 @@ class InsectDataset(Dataset):
         y = torch.tensor(self.labels[idx], dtype=torch.long)
         return x, y
 
-def augment_sequence(seq, noise_std=0.01, prob_flip=0.5, translation_range=0.1):
+import math
+
+def augment_sequence(seq, noise_std=0.01, prob_rotate=0.5, max_rotate_angle=math.pi/2, translation_range=0.1):
     """
     Augments a sequence of (x, y) coordinates (each in [0,1]) by:
-      - Potentially flipping the entire sequence horizontally and/or vertically.
+      - With probability `prob_rotate`, rotating the entire sequence by a random angle.
       - Applying a random translation in both x and y.
       - Adding Gaussian noise.
 
     Args:
         seq (torch.Tensor): Tensor of shape (seq_len, 2) containing (x, y) coordinates.
         noise_std (float): Standard deviation of Gaussian noise to add.
-        prob_flip (float): Probability of applying each flip (horizontal and vertical).
+        prob_rotate (float): Probability of applying a random rotation.
+        max_rotate_angle (float): Maximum rotation angle in radians (random angle ∈ [-max, max]).
         translation_range (float): Maximum absolute translation offset for both x and y.
 
     Returns:
         torch.Tensor: The augmented sequence with values clamped to [0, 1].
     """
-    # Make a copy so as not to modify the original tensor
     seq_aug = seq.clone()
-    
-    # Full horizontal flip: if triggered, flip x coordinates for the entire sequence.
-    if random.random() < prob_flip:
-        seq_aug[:, 0] = 1 - seq_aug[:, 0]
-    
-    # Full vertical flip: if triggered, flip y coordinates for the entire sequence.
-    if random.random() < prob_flip:
-        seq_aug[:, 1] = 1 - seq_aug[:, 1]
-    
+    seq_len = seq_aug.size(0)
+
+    # Random rotation
+    if random.random() < prob_rotate:
+        angle = random.uniform(-max_rotate_angle, max_rotate_angle)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+
+        # Rotate around the sequence center (0.5, 0.5)
+        center = torch.tensor([0.5, 0.5], device=seq_aug.device)
+        seq_centered = seq_aug - center
+        rot_matrix = torch.tensor([[cos_a, -sin_a], [sin_a, cos_a]], device=seq_aug.device)
+        seq_rot = torch.matmul(seq_centered, rot_matrix.T) + center
+        seq_aug = seq_rot
+
     # Apply a random translation in both x and y directions.
     shift_x = random.uniform(-translation_range, translation_range)
     shift_y = random.uniform(-translation_range, translation_range)
     seq_aug[:, 0] += shift_x
     seq_aug[:, 1] += shift_y
-    
+
     # Add small Gaussian noise to both dimensions.
     noise = torch.randn_like(seq_aug) * noise_std
     seq_aug += noise
-    
+
     # Clamp values to ensure they remain within [0, 1]
     seq_aug = seq_aug.clamp(0, 1)
-    
+
     return seq_aug
 
 def collate_fn(batch):
     sequences, labels = zip(*batch)
     lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)
-    padded_sequences = pad_sequence(sequences, batch_first=True, padding_value=0)
+    padded_sequences = pad_sequence(sequences, batch_first=True, padding_value=0) 
     labels = torch.tensor(labels, dtype=torch.long)
     return padded_sequences, labels, lengths
 
-def load_dataset(data_dir: str, diff: bool=False, scaler: str=None) -> tuple[InsectDataset, InsectDataset, InsectDataset, InsectDataset]:
+def load_dataset(data_dir: str, diff: bool=False, scaler: str=None, augment: bool=True) -> tuple[InsectDataset, InsectDataset, InsectDataset, InsectDataset]:
     """
     Loads dataset in path data_dir. Assumes train/test folder exists in said directory.
     Defaults to 0.8/0.2 train/val split and 0.8/0.2 train,val/test split.
@@ -122,7 +130,11 @@ def load_dataset(data_dir: str, diff: bool=False, scaler: str=None) -> tuple[Ins
         _ = compute_and_scale_deltas(test_dict, scaler=scaler)
 
     # Create training dataset with augmentation.
-    train_dataset = InsectDataset(tracks_dict_train, transform=augment_sequence)
+    if augment:
+        train_dataset = InsectDataset(tracks_dict_train, transform=augment_sequence)
+    else:
+        train_dataset = InsectDataset(tracks_dict_train, transform=None)
+
     # Create test dataset without augmentation.
     val_dataset = InsectDataset(tracks_dict_val, transform=None)
     test_dataset = InsectDataset(test_dict, transform=None)
