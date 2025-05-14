@@ -1,4 +1,4 @@
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, hamming_loss, classification_report,  confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, hamming_loss, classification_report,  confusion_matrix, balanced_accuracy_score
 
 def evaluate_model(model, val_data):
     """
@@ -16,6 +16,7 @@ def evaluate_model(model, val_data):
     
     # Subset accuracy (exact match accuracy)
     metrics["accuracy"] = accuracy_score(true_labels, predictions)
+    metrics["balanced_accuracy"] = balanced_accuracy_score(true_labels, predictions)
     
     # Hamming loss (fraction of wrong labels per sample)
     metrics["hamming_loss"] = hamming_loss(true_labels, predictions)

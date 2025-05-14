@@ -3,6 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from utils.data_loading import collate_fn
+from sklearn.metrics import f1_score, balanced_accuracy_score, recall_score
+from torch.utils.data import WeightedRandomSampler, DataLoader
+import numpy as np
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation, dropout):
@@ -186,9 +189,12 @@ class CNN_model:
             train_loss_epoch = running_train_loss / total_train
             train_accuracy_epoch = (correct_train / total_train) * 100
 
-            # --- Validation Phase ---
-            val_loss_epoch = 0
-            val_accuracy_epoch = 0
+                    # --- Validation Phase ---
+            val_loss_epoch = None
+            val_acc_epoch  = None
+            val_macro_f1   = None
+            val_bal_acc    = None
+            val_recall_cls = None
 
             if val_dataset is not None:
                 self.model.eval()
@@ -196,49 +202,75 @@ class CNN_model:
                 correct_val = 0
                 total_val = 0
 
+                all_val_preds = []
+                all_val_labels = []
+
                 with torch.no_grad():
                     for sequences, labels, lengths in val_loader:
-                        sequences = sequences.to(self.device)
-                        labels = labels.to(self.device)
-                        lengths = lengths.to(self.device)
-
+                        sequences, labels, lengths = (
+                            sequences.to(self.device),
+                            labels.to(self.device),
+                            lengths.to(self.device)
+                        )
                         outputs = self.model(sequences, lengths)
                         loss = self.criterion(outputs, labels)
-                        running_val_loss += loss.item() * sequences.size(0)
-                        _, predicted = torch.max(outputs, 1)
-                        total_val += sequences.size(0)
-                        correct_val += (predicted == labels).sum().item()
 
+                        bs = sequences.size(0)
+                        running_val_loss += loss.item() * bs
+                        _, preds = torch.max(outputs, 1)
+
+                        total_val += bs
+                        correct_val += (preds == labels).sum().item()
+
+                        all_val_preds.append(preds.cpu())
+                        all_val_labels.append(labels.cpu())
+
+                # aggregate
                 val_loss_epoch = running_val_loss / total_val
-                val_accuracy_epoch = (correct_val / total_val) * 100
+                val_acc_epoch  = correct_val / total_val * 100
 
-                            # --- check for improvement ---
+                y_true = torch.cat(all_val_labels).numpy()
+                y_pred = torch.cat(all_val_preds).numpy()
+
+                val_macro_f1   = f1_score(y_true, y_pred, average='macro')
+                val_bal_acc    = balanced_accuracy_score(y_true, y_pred)
+                val_recall_cls = recall_score(y_true, y_pred, average=None)
+
+                # early stopping on val loss (or swap in macro-F1 if desired)
                 if self.early_stopping:
                     if best_val_loss - val_loss_epoch > min_delta:
                         best_val_loss = val_loss_epoch
                         epochs_no_improve = 0
-                        #best_model_state = model.state_dict()      # save best weights
                     else:
                         epochs_no_improve += 1
-                    
-                                    # --- early stopping check ---
                     if epochs_no_improve >= patience:
                         print(f"No improvement for {patience} epochs. Stopping early.")
                         break
 
-
             # --- Logging ---
-            # Log epoch-level metrics to your logger (assumes logger.log_epoch exists)
-            self.training_history.append({"epoch": epoch + 1,
-                            "train_loss":train_loss_epoch,
-                            "train_acc":train_accuracy_epoch,
-                            "val_loss":val_loss_epoch,
-                            "val_acc":val_accuracy_epoch})
+            entry = {
+                "epoch": epoch + 1,
+                "train_loss": train_loss_epoch,
+                "train_acc":  train_accuracy_epoch
+            }
+            if val_dataset is not None:
+                entry.update({
+                    "val_loss":       val_loss_epoch,
+                    "val_acc":        val_acc_epoch,
+                    "val_macro_f1":   val_macro_f1,
+                    "val_bal_acc":    val_bal_acc,
+                    "val_recall_cls": val_recall_cls,  # array of per-class recalls
+                })
+            self.training_history.append(entry)
 
-            # Print epoch results for convenience.
-            print(f"Epoch {epoch+1}/{self.num_epochs} -- "
-                f"Train Loss: {train_loss_epoch:.4f}, Train Acc: {train_accuracy_epoch:.2f}% || "
-                f"Val Loss: {val_loss_epoch:.4f}, Val Acc: {val_accuracy_epoch:.2f}%")
+            # Print summary
+            msg = (f"Epoch {epoch+1}/{self.num_epochs}  "
+                f"Train Loss: {train_loss_epoch:.4f}, Train Acc: {train_accuracy_epoch:.2f}%")
+            if val_dataset is not None:
+                msg += (f"  |  Val Loss: {val_loss_epoch:.4f}, Val Acc: {val_acc_epoch:.2f}%  "
+                        f"Macro-F1: {val_macro_f1:.3f}, BalAcc: {val_bal_acc:.3f}")
+            print(msg)
+
         return self
 
     def predict(self, input_dataset):

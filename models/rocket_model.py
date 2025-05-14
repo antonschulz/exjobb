@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.linear_model import RidgeClassifierCV
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score, recall_score
 from sktime.transformations.panel.rocket import Rocket
 
 
@@ -64,13 +64,16 @@ class Rocket_model():
             X_val, y_val = dataset_to_numpy(val_dataset, self.padding)
 
         # 1) Fit the ROCKET transformer on train
+                # after computing your class frequencies
+        counts = np.bincount(y_train, minlength=4)
+        inv_freq = 1.0 / counts
+        sample_weights = inv_freq[y_train]  # shape (n_train,)
+
+        # then
         self.model.fit(X_train)
-
-        # 2) Transform train (and optionally val)
+        
         X_train_t = self.model.transform(X_train)
-
-        # 3) Train classifier on transformed features
-        self.clf.fit(X_train_t, y_train)
+        self.clf.fit(X_train_t, y_train, sample_weight=sample_weights)
 
         # 4) Compute training accuracy
         y_pred_train = self.clf.predict(X_train_t)
@@ -79,20 +82,43 @@ class Rocket_model():
         # Prepare a dict to hold metrics
         run_metrics = {"train_accuracy": train_acc}
 
-        # 5) If validation data provided, transform & evaluate it
+                # 5) If validation data provided, transform & evaluate it
         if val_dataset is not None:
-            X_val_t = self.model.transform(X_val)
-            y_pred_val = self.clf.predict(X_val_t)
-            val_acc = accuracy_score(y_val, y_pred_val)
+            X_val_t     = self.model.transform(X_val)
+            y_pred_val  = self.clf.predict(X_val_t)
+
+            # basic accuracy
+            val_acc     = accuracy_score(y_val, y_pred_val)
             run_metrics["val_accuracy"] = val_acc
+
+            # macro-F1
+            val_macro_f1 = f1_score(y_val, y_pred_val, average='macro')
+            run_metrics["val_macro_f1"] = val_macro_f1
+
+            # balanced accuracy
+            val_bal_acc  = balanced_accuracy_score(y_val, y_pred_val)
+            run_metrics["val_balanced_accuracy"] = val_bal_acc
+
+            # per-class recall
+            recalls = recall_score(y_val, y_pred_val, average=None)
+            for cls_idx, r in enumerate(recalls):
+                run_metrics[f"val_recall_class_{cls_idx}"] = r
 
         # 6) Log or store the metrics
         self.training_history.append(run_metrics)
 
-        print("🚀 ROCKET fit complete — Train Acc: {:.2f}%{}".format(
-            train_acc * 100,
-            f", Val Acc: {val_acc*100:.2f}%" if val_dataset is not None else "",
-        ))
+        print(
+        "ROCKET fit complete — "
+        "Train Acc: {:.2f}%{}"
+        .format(
+            train_acc*100,
+            (
+                f", Val Acc: {val_acc*100:.2f}%"
+                f", Val Macro-F1: {val_macro_f1:.3f}"
+                f", Val Bal Acc: {val_bal_acc:.3f}"
+            ) if val_dataset is not None else ""
+            )
+        )
 
         return self
     

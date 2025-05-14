@@ -109,10 +109,6 @@ def load_dataset(data_dir: str, diff: bool=False, scaler: str=None, augment: boo
     val_dict = read_dataset(val_path, interpolate=True, normalize=True)
     test_dict = read_dataset(test_path, interpolate=True, normalize=True)
 
-    # Extract the filenames (keys) and corresponding labels for stratification.
-    filenames = list(train_dict.keys())
-    labels = [train_dict[f]['label'] for f in filenames]
-
 
     if diff:
         scaler = compute_and_scale_deltas(train_dict, scaler_str=scaler)
@@ -129,8 +125,9 @@ def load_dataset(data_dir: str, diff: bool=False, scaler: str=None, augment: boo
     val_dataset = InsectDataset(val_dict, transform=None)
     test_dataset = InsectDataset(test_dict, transform=None)
     # also create train set of the entire set
-    full_training_dataset = InsectDataset(train_dict, transform=augment_sequence)
-
+    entire_training_dict = train_dict | val_dict
+    full_training_dataset = InsectDataset(entire_training_dict, transform=augment_sequence)
+    
     return train_dataset, val_dataset, test_dataset, full_training_dataset
 
 
