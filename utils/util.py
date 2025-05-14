@@ -88,6 +88,10 @@ def read_dataset(
         x_col = next((col for col in df.columns if col.startswith("x0")), None)
         y_col = next((col for col in df.columns if col.startswith("y0")), None)
         frame_col = next((col for col in df.columns if col.startswith("nframe")), None)
+
+                # cast both sets of columns to float
+        df[x_col] = df[x_col].astype('float64')
+        df[y_col] = df[y_col].astype('float64')
         
         if x_col is None or y_col is None or frame_col is None:
             print(f"Warning: Could not find required columns in {filename}. Skipping file.")

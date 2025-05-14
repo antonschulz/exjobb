@@ -36,6 +36,7 @@ def sample_rf_config():
     }
     return config
 
+
 def sample_tcn_config():
     """
     Sample a random hyperparameter configuration for an LSTM model.
@@ -102,16 +103,71 @@ def default_tcn_config():
     }
     return config
 
+def default_cnn_config():
+    config = {
+        "input_channels": 2,
+        "num_classes": 4,
+        "num_layers": 3,
+        "kernel_size":3,
+        "dropout": 0,
+        "num_filters": 16,
+        "learning_rate": 1e-3,
+        "weight_decay": 0,
+        "num_epochs": 200,
+    }
+
+    return config
+
+def sample_cnn_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_channels": 2,
+        "num_classes": 4,
+        "early_stopping": True,
+        "num_epochs": random.choice([200]),
+        "learning_rate": random.choice([0.001, 0.005, 5e-4]),
+        "num_levels": random.choice([3, 6, 9, 12, 16]),
+        "kernel_size": random.choice([1,3,5,9]),
+        "dropout": random.choice([0, 0.1]),
+        "num_filters": random.choice([4, 8,16,32]),
+        "weight_decay": random.choice([0,1e-5]),
+    }
+    return config
+
+
+def testing_tcn_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_channels": 2,
+        "num_classes": 4,
+        "early_stopping": True,
+        "num_epochs": 400,
+        "learning_rate": 0.0005,
+        "num_levels": 8,
+        "kernel_size": 3,
+        "dropout": 0,
+        "num_filters": 32,
+        "weight_decay": 0,
+    }
+    return config
+
 
 
 hyperparameter_spaces = {
     "lstm": sample_lstm_config,
     "tcn": sample_tcn_config,
     "rf": sample_rf_config,
+    "cnn": sample_cnn_config,
     "rocket": sample_rocket_config,
     # defaults
     "lstm-default": default_lstm_config,
-    "tcn-default": default_tcn_config,
+    "tcn-default": testing_tcn_config, #TODO
 }
 
 # ----- Global configuration settings -----

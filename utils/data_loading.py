@@ -103,40 +103,30 @@ def load_dataset(data_dir: str, diff: bool=False, scaler: str=None, augment: boo
     Loads dataset in path data_dir. Assumes train/test folder exists in said directory.
     Defaults to 0.8/0.2 train/val split and 0.8/0.2 train,val/test split.
     """
-    train_path, test_path = f'{data_dir}/train', f'{data_dir}/test'
-
+    train_path, test_path, val_path = f'{data_dir}/train', f'{data_dir}/test', f'{data_dir}/val'
+    
     train_dict = read_dataset(train_path, interpolate=True, normalize=True)
+    val_dict = read_dataset(val_path, interpolate=True, normalize=True)
     test_dict = read_dataset(test_path, interpolate=True, normalize=True)
 
     # Extract the filenames (keys) and corresponding labels for stratification.
     filenames = list(train_dict.keys())
     labels = [train_dict[f]['label'] for f in filenames]
 
-    # 80% train, 20% val split
-    train_filenames, val_filenames = train_test_split(
-        filenames,
-        test_size=0.2,
-        stratify=labels,
-        random_state=42  # For reproducibility
-    )
-
-    # Create train and test dictionaries from tracks_dict.
-    tracks_dict_train = {fname: train_dict[fname] for fname in train_filenames}
-    tracks_dict_val  = {fname: train_dict[fname] for fname in val_filenames}
 
     if diff:
-        scaler = compute_and_scale_deltas(tracks_dict_train, scaler_str=scaler)
-        _ = compute_and_scale_deltas(tracks_dict_val, scaler=scaler)
+        scaler = compute_and_scale_deltas(train_dict, scaler_str=scaler)
+        _ = compute_and_scale_deltas(val_dict, scaler=scaler)
         _ = compute_and_scale_deltas(test_dict, scaler=scaler)
 
     # Create training dataset with augmentation.
     if augment:
-        train_dataset = InsectDataset(tracks_dict_train, transform=augment_sequence)
+        train_dataset = InsectDataset(train_dict, transform=augment_sequence)
     else:
-        train_dataset = InsectDataset(tracks_dict_train, transform=None)
+        train_dataset = InsectDataset(train_dict, transform=None)
 
     # Create test dataset without augmentation.
-    val_dataset = InsectDataset(tracks_dict_val, transform=None)
+    val_dataset = InsectDataset(val_dict, transform=None)
     test_dataset = InsectDataset(test_dict, transform=None)
     # also create train set of the entire set
     full_training_dataset = InsectDataset(train_dict, transform=augment_sequence)

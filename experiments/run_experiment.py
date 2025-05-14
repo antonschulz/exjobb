@@ -12,7 +12,7 @@ from config import GLOBAL_CONFIG
 import torch
 
 # Import model modules
-from models import lstm_model, tcn_model, rocket_model
+from models import lstm_model, tcn_model, rocket_model, cnn_model
 
 def main(args):
     # Load dataset (should return train, validation, and test sets)
@@ -26,6 +26,8 @@ def main(args):
         ModelClass = tcn_model.TCN_model
     elif args.model == 'rocket':
         ModelClass = rocket_model.Rocket_model
+    elif args.model == 'cnn':
+        ModelClass = cnn_model.CNN_model
     else:
         raise ValueError("Unsupported model type")
     
@@ -34,6 +36,7 @@ def main(args):
     logger.set_global_config(GLOBAL_CONFIG)
     # Hyperparameter tuning (using train and validation sets)
     model_parameter_space_name = f"{args.model}-default" if args.default_model else args.model
+
     best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, model_parameter_space_name, logger)
     print("Best hyperparameters found:", best_config)
     
@@ -42,38 +45,76 @@ def main(args):
     if args.evaluate:
         test_metrics_list = []
         for run in range(args.num_runs):
-            # Initialize a fresh model instance with best_config.
+            # Initialize, train, and evaluate
             model = ModelClass(**best_config, device=device)
             train_model(model, full_training_data, None)
             logger.log_full_training_history(model.training_history)
-            # Evaluate model performance on the test set.
-            # Assume evaluate_model returns a dictionary of metrics.
+
             run_metrics = evaluate_model(model, test_data)
             test_metrics_list.append(run_metrics)
             logger.log_test_result(run_metrics)
             print(f"Run {run+1}/{args.num_runs}: Test Metrics: {run_metrics}")
-        
-        # Aggregate the metrics across runs.
-        # Assuming each run_metrics is a dictionary with the same keys.
+
+        # Aggregate
         metric_keys = test_metrics_list[0].keys()
         aggregated_metrics = {}
-        aggregated_std = {}
-        
+        aggregated_std     = {}
+
         for key in metric_keys:
-            # Gather each metric's value from each run.
-            values = [metrics[key] for metrics in test_metrics_list]
-            aggregated_metrics[key] = np.mean(values)
-            aggregated_std[key] = np.std(values)
-        
+            if key == "confusion_matrix":
+                # sum confusion‐matrix counts across runs
+                first_cm = test_metrics_list[0][key]
+                agg_cm = {
+                    true_label: {pred_label: 0
+                                for pred_label in first_cm[true_label]}
+                    for true_label in first_cm
+                }
+                for run_metrics in test_metrics_list:
+                    cm = run_metrics["confusion_matrix"]
+                    for t_lbl, row in cm.items():
+                        for p_lbl, cnt in row.items():
+                            agg_cm[t_lbl][p_lbl] += cnt
+                aggregated_metrics[key] = agg_cm
+                aggregated_std[key]     = None
+            elif key == "classification_report":
+                # test_metrics_list[0][key] is a dict whose values are either dicts or a float for 'accuracy'
+                avg_report = {}
+                for lbl, entry in test_metrics_list[0][key].items():
+                    if isinstance(entry, dict):
+                        # average each sub‐metric
+                        avg_report[lbl] = {}
+                        for m_name, _ in entry.items():
+                            vals = [run[key][lbl][m_name] for run in test_metrics_list]
+                            avg_report[lbl][m_name] = float(np.mean(vals))
+                    else:
+                        # scalar accuracy
+                        vals = [run[key][lbl] for run in test_metrics_list]
+                        avg_report[lbl] = float(np.mean(vals))
+                aggregated_metrics[key] = avg_report
+                aggregated_std[key]     = None
+            else:
+                # scalar metric → mean ± std
+                vals = [run[key] for run in test_metrics_list]
+                aggregated_metrics[key] = float(np.mean(vals))
+                aggregated_std[key]     = float(np.std(vals))
+
+        # Log & print
         logger.log_final_test_results(aggregated_metrics, aggregated_std)
-        # Print aggregated metrics.
+
         print(f"Final Test Performance over {args.num_runs} runs:")
         for key in metric_keys:
-            print(f"{key}: Mean = {aggregated_metrics[key]:.4f}, Std = {aggregated_std[key]:.4f}")
+            if key in ("confusion_matrix","classification_report"):
+                print(f"{key}:")
+                print(aggregated_metrics[key])
+            else:
+                mean = aggregated_metrics[key]
+                std  = aggregated_std[key]
+                print(f"{key}:  Mean = {mean:.4f}, Std = {std:.4f}")
     else:
         print("Evaluation on the test set is disabled. Only hyperparameter tuning was performed.")
 
     logger.save()
+
 
 
 if __name__ == '__main__':
