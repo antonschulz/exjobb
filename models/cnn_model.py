@@ -259,7 +259,7 @@ class CNN_model:
                     "val_acc":        val_acc_epoch,
                     "val_macro_f1":   val_macro_f1,
                     "val_bal_acc":    val_bal_acc,
-                    "val_recall_cls": val_recall_cls,  # array of per-class recalls
+                    #"val_recall_cls": val_recall_cls,  # array of per-class recalls
                 })
             self.training_history.append(entry)
 

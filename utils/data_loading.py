@@ -82,9 +82,9 @@ def augment_sequence(seq, noise_std=0.01, prob_rotate=0.5, max_rotate_angle=math
     seq_aug[:, 0] += shift_x
     seq_aug[:, 1] += shift_y
 
-    # Add small Gaussian noise to both dimensions.
-    noise = torch.randn_like(seq_aug) * noise_std
-    seq_aug += noise
+    # # Add small Gaussian noise to both dimensions.
+    # noise = torch.randn_like(seq_aug) * noise_std
+    # seq_aug += noise
 
     # Clamp values to ensure they remain within [0, 1]
     seq_aug = seq_aug.clamp(0, 1)
