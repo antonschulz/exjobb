@@ -22,7 +22,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         best_config (dict): The hyperparameter configuration that achieved the highest validation metric.
     """
     best_config = None
-    best_metrics = {'accuracy': -float('inf')}  # Assuming higher is better (e.g., accuracy)
+    best_metrics = {'balanced_accuracy': -float('inf')}  # Assuming higher is better (e.g., accuracy)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
 
@@ -47,7 +47,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         print(f"Iteration {i+1}: Config: {config}, Validation Metric: {metrics}")
 
         # Keep track of the best configuration based on the performance metric.
-        if metrics['accuracy'] > best_metrics['accuracy']:
+        if metrics['balanced_accuracy'] > best_metrics['balanced_accuracy']:
             best_metrics = metrics
             best_config = config
 

@@ -98,7 +98,8 @@ class TCN_model:
         self.model = TCN(input_channels, num_classes, num_levels, kernel_size, dropout, num_filters)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=weight_decay)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.25, 0.25, 0.25, 0.25],
+                              dtype=torch.float))
         self.logger = logger
         self.training_history = [] # {"epoch": 1, "train_loss": 0.5, "train_acc": 80, "val_loss": 0.6, "val_acc": 78},
 
@@ -113,7 +114,7 @@ class TCN_model:
         Returns:
             self: So the method can be chained.
         """
-        patience = 5
+        patience = 35
         epochs_no_improve = 0
         min_delta = 1e-4
         best_val_loss = float("inf")

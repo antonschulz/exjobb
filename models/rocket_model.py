@@ -45,7 +45,7 @@ class Rocket_model():
         self.padding=padding
         self.logger=None
         self.training_history = []
-        self.clf = RidgeClassifierCV(alphas=np.logspace(-3, 3, 10))
+        self.clf = RidgeClassifierCV(alphas=np.logspace(-3, 3, 10), class_weight='balanced')
 
     def fit(self, train_dataset, val_dataset=None):
         """
@@ -71,9 +71,9 @@ class Rocket_model():
 
         # then
         self.model.fit(X_train)
-        
+
         X_train_t = self.model.transform(X_train)
-        self.clf.fit(X_train_t, y_train, sample_weight=sample_weights)
+        self.clf.fit(X_train_t, y_train)
 
         # 4) Compute training accuracy
         y_pred_train = self.clf.predict(X_train_t)
