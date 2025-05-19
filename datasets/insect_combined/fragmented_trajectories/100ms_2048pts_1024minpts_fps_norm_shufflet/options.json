@@ -1,0 +1,20 @@
+{
+  "DATETIME_STR": "2024-09-18_17-13-35",
+  "ADD_TIME_TO_FILENAME": true,
+  "ADD_BB_EVENTS": false,
+  "SAVE_PARTIAL_TRAJECTORIES": true,
+  "OUTPUT_DIR_MODE": "dataset_dir",
+  "TRAJECTORIES_BASE_DIR": "output\\extracted_trajectories\\3_classified",
+  "OUTPUT_DATASET_DIR": "..\\..\\datasets\\insect\\100ms_2048pts_1024minpts_fps-ds_none-nr_norm_shufflet_2024-09-18_17-13-35",
+  "MIN_FILE_SIZE_BYTES": 102400,
+  "TIMESTEPS_PER_SECOND": 1000000,
+  "T_SCALE": 0.002,
+  "T_BUCKET_LENGTH": 100000,
+  "T_BUCKET_LENGTH_MS": 100,
+  "EVENTS_PER_FRAGMENT": 2048,
+  "MIN_EVENTS_COUNT": 1024,
+  "DOWNSAMPLE_METHOD": "farthest_point",
+  "NOISE_REDUCTION_METHOD": "none",
+  "NORMALIZE": true,
+  "SHUFFLE_T": true
+}
