@@ -1,72 +1,70 @@
-import torch
-from torch import Tensor, nn
+import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import torch
 from torch.utils.data import DataLoader
 from utils.data_loading import collate_fn
+from sklearn.metrics import f1_score, balanced_accuracy_score
 
 
-class LSTMModel(nn.Module):
-    def __init__(
-        self,
-        input_size: int,
-        num_classes: int,
-        hidden_size: int = 64,
-        num_layers: int = 2,
-        bi_lstm: bool = False,
-        dropout_lstm: float = 0.1,
-        fc_units: list[int] = [32],
-        dropout_fc: float = 0.1,
-    ):
-        super().__init__()
+class LSTMMLP(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, mlp_output_size,
+                 batch_first=True, dropout=0.0, bidirectional=False):
+        super(LSTMMLP, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.batch_first = batch_first
+        self.bidirectional = bidirectional
+        self.num_directions = 2 if bidirectional else 1
+
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            dropout=dropout_lstm if num_layers > 1 else 0.0,
-            bidirectional=bi_lstm,
-            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0.0,
+            bidirectional=bidirectional,
+            batch_first=batch_first
         )
-        lstm_out_dim = hidden_size * (2 if bi_lstm else 1)
+        # MLP head takes the concatenated last hidden state if bidirectional
+        self.fc = nn.Linear(hidden_size * self.num_directions, mlp_output_size)
 
-        # build FC head
-        layers = []
-        in_dim = lstm_out_dim
-        for dim in fc_units:
-            layers += [nn.Linear(in_dim, dim), nn.ReLU(), nn.Dropout(dropout_fc)]
-            in_dim = dim
-        layers.append(nn.Linear(in_dim, num_classes))
-        self.fc = nn.Sequential(*layers)
+    def forward(self, x, lengths=None, hidden=None):
 
-    def forward(self, x: Tensor, lengths: Tensor) -> Tensor:
-        # pack
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        packed_out, (h_n, _) = self.lstm(packed)
-        # if you want mask‑based pooling instead:
-        # out, _ = pad_packed_sequence(packed_out, batch_first=True)
-        # mask = ...
-        # feat = (out * mask).sum(1)/lengths.unsqueeze(1)
-        # else use h_n:
-        if self.lstm.bidirectional:
-            h_fwd = h_n[-2]
-            h_bwd = h_n[-1]
-            feat = torch.cat([h_fwd, h_bwd], dim=1)
+        if lengths is not None:
+            packed = pack_padded_sequence(x, lengths.cpu(), batch_first=self.batch_first, enforce_sorted=False)
+            if hidden is not None:
+                packed_out, (h_n, c_n) = self.lstm(packed, hidden)
+            else:
+                packed_out, (h_n, c_n) = self.lstm(packed)
+            output, _ = pad_packed_sequence(packed_out, batch_first=self.batch_first)
         else:
-            feat = h_n[-1]
-        return self.fc(feat)
+            if hidden is not None:
+                output, (h_n, c_n) = self.lstm(x, hidden)
+            else:
+                output, (h_n, c_n) = self.lstm(x)
 
+        # h_n: (num_layers * num_directions, batch, hidden_size)
+        # select the last layer for each direction
+        if self.bidirectional:
+            h_n = h_n.view(self.num_layers, self.num_directions, h_n.size(1), self.hidden_size)
+            last_forward = h_n[-1, 0]  # last layer, forward
+            last_backward = h_n[-1, 1]  # last layer, backward
+            last_hidden = torch.cat([last_forward, last_backward], dim=1)  # (batch, hidden_size*2)
+        else:
+            last_hidden = h_n[-1]  # (batch, hidden_size)
+
+        out = self.fc(last_hidden)
+        return out, (h_n, c_n)
     
-class LSTM_model:
+class LSTM_wrapper:
     def __init__(
         self,
-        input_size: int,
-        num_classes: int,
-        hidden_size=None,
+        input_size: int=2,
+        num_classes: int=4,
+        hidden_size=128,
         num_layers: int = 2,
-        fc_units=None,
         bi_lstm: bool = False,
-        dropout_lstm: float = 0.0,
-        dropout_fc: float = 0.0,
-        num_epochs: int = 10,
+        dropout: float = 0.0,
+        num_epochs: int = 200,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
         device=None,
@@ -82,28 +80,41 @@ class LSTM_model:
         self.training_history = []
 
         # instantiate your LSTMModel
-        self.model = LSTMModel(
-            input_size=input_size,
-            num_classes=num_classes,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            fc_units=fc_units,
-            bi_lstm=bi_lstm,
-            dropout_lstm=dropout_lstm,
-            dropout_fc=dropout_fc,
-        ).to(self.device)
+        self.model = LSTMMLP(input_size=input_size, hidden_size=hidden_size, dropout=dropout, num_layers=num_layers, mlp_output_size=num_classes, batch_first=True, bidirectional=bi_lstm).to(self.device)
 
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.lr, weight_decay=weight_decay
         )
         self.criterion = nn.CrossEntropyLoss()
 
-    def fit(self, train_dataset, val_dataset=None, batch_size=16):
-        """
-        Train for self.num_epochs, logging train/val loss & accuracy.
-        """
+    def fit(self, train_dataset, val_dataset=None, batch_size=16, debug=False):
+        all_labels = [train_dataset[i][1] for i in range(len(train_dataset))]
+        num_classes = self.model.fc.out_features
+        import numpy as np
+        counts = np.bincount(all_labels, minlength=num_classes)
+
+        # 2) build class_weights = 1/counts (then normalize so mean=1)
+        class_weights = torch.tensor(
+            counts.sum() / (counts * num_classes),
+            dtype=torch.float,
+            device=self.device
+        )
+
+        #self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+
+        sample_weights = class_weights[all_labels]  
+        from torch.utils.data import WeightedRandomSampler
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
+
         train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+            train_dataset,
+            batch_size=16,
+            sampler=sampler,
+            collate_fn=collate_fn
         )
         if val_dataset is not None:
             val_loader = DataLoader(
@@ -111,62 +122,118 @@ class LSTM_model:
             )
 
         for epoch in range(1, self.num_epochs + 1):
-            # --- train ---
+            # --- Training Phase ---
             self.model.train()
             running_loss, correct, total = 0.0, 0, 0
+
             for x, y, lengths in train_loader:
                 x, y, lengths = x.to(self.device), y.to(self.device), lengths.to(self.device)
                 self.optimizer.zero_grad()
-                logits = self.model(x, lengths)
+                logits, _ = self.model(x, lengths)
                 loss = self.criterion(logits, y)
                 loss.backward()
+
+                if debug:
+                    # Print gradient stats before the optimizer step
+                    print(f"\n[DEBUG] Epoch {epoch} gradients:")
+                    for name, param in self.model.named_parameters():
+                        if param.grad is not None:
+                            print(f"  {name}: grad mean={param.grad.mean():.6f}, std={param.grad.std():.6f}")
+
                 self.optimizer.step()
 
+
+                # accumulate metrics
                 bs = x.size(0)
                 running_loss += loss.item() * bs
                 preds = logits.argmax(dim=1)
                 total += bs
                 correct += (preds == y).sum().item()
 
-            train_loss = running_loss / total
-            train_acc = 100 * correct / total
+            train_loss_epoch = running_loss / total
+            train_acc_epoch = 100 * correct / total
 
-            # --- validate ---
+                    # --- Validation Phase ---
+            val_loss_epoch = None
+            val_acc_epoch  = None
+            val_macro_f1   = None
+            val_bal_acc    = None
+
             if val_dataset is not None:
                 self.model.eval()
-                v_loss, v_correct, v_total = 0.0, 0, 0
+                running_val_loss = 0.0
+                correct_val = 0
+                total_val = 0
+
+                all_val_preds = []
+                all_val_labels = []
+
                 with torch.no_grad():
-                    for x, y, lengths in val_loader:
-                        x, y, lengths = x.to(self.device), y.to(self.device), lengths.to(self.device)
-                        logits = self.model(x, lengths)
-                        loss = self.criterion(logits, y)
-                        bs = x.size(0)
-                        v_loss += loss.item() * bs
-                        preds = logits.argmax(dim=1)
-                        v_total += bs
-                        v_correct += (preds == y).sum().item()
-                val_loss = v_loss / v_total
-                val_acc = 100 * v_correct / v_total
-            else:
-                val_loss, val_acc = None, None
+                    for sequences, labels, lengths in val_loader:
+                        sequences, labels, lengths = (
+                            sequences.to(self.device),
+                            labels.to(self.device),
+                            lengths.to(self.device)
+                        )
+                        outputs, _ = self.model(sequences, lengths)
+                        loss = self.criterion(outputs, labels)
 
-            # --- record & log ---
-            record = {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "train_acc": train_acc,
-                "val_loss": val_loss,
-                "val_acc": val_acc,
+                        bs = sequences.size(0)
+                        running_val_loss += loss.item() * bs
+                        _, preds = torch.max(outputs, 1)
+
+                        total_val += bs
+                        correct_val += (preds == labels).sum().item()
+
+                        all_val_preds.append(preds.cpu())
+                        all_val_labels.append(labels.cpu())
+
+                # aggregate
+                val_loss_epoch = running_val_loss / total_val
+                val_acc_epoch  = correct_val / total_val * 100
+
+                y_true = torch.cat(all_val_labels).numpy()
+                y_pred = torch.cat(all_val_preds).numpy()
+
+                val_macro_f1   = f1_score(y_true, y_pred, average='macro')
+                val_bal_acc    = balanced_accuracy_score(y_true, y_pred)
+
+                # early stopping on val loss (or swap in macro-F1 if desired)
+                # if self.early_stopping:
+                #     if best_val_loss - val_loss_epoch > min_delta:
+                #         best_val_loss = val_loss_epoch
+                #         epochs_no_improve = 0
+                #     else:
+                #         epochs_no_improve += 1
+                #     if epochs_no_improve >= patience:
+                #         print(f"No improvement for {patience} epochs. Stopping early.")
+                #         break
+
+            # --- Logging ---
+            entry = {
+                "epoch": epoch + 1,
+                "train_loss": train_loss_epoch,
+                "train_acc":  train_acc_epoch
             }
-            self.training_history.append(record)
+            if val_dataset is not None:
+                entry.update({
+                    "val_loss":       val_loss_epoch,
+                    "val_acc":        val_acc_epoch,
+                    "val_macro_f1":   val_macro_f1,
+                    "val_bal_acc":    val_bal_acc,
+                })
+            self.training_history.append(entry)
 
-            print(
-                f"Epoch {epoch}/{self.num_epochs}  "
-                f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.2f}%  "
-                f"Val Loss={val_loss if val_loss is not None else 'N/A'}"
-                f"{', Val Acc={:.2f}%'.format(val_acc) if val_acc is not None else ''}"
-            )
+            # Print summary
+            msg = (f"Epoch {epoch+1}/{self.num_epochs}  "
+                f"Train Loss: {train_loss_epoch:.4f}, Train Acc: {train_acc_epoch:.2f}%")
+            if val_dataset is not None:
+                msg += (f"  |  Val Loss: {val_loss_epoch:.4f}, Val Acc: {val_acc_epoch:.2f}%  "
+                        f"Macro-F1: {val_macro_f1:.3f}, BalAcc: {val_bal_acc:.3f}")
+            print(msg)
+
         return self
+
 
     def predict(self, dataset, batch_size=1):
         """
@@ -178,7 +245,7 @@ class LSTM_model:
         with torch.no_grad():
             for x, _, lengths in loader:
                 x, lengths = x.to(self.device), lengths.to(self.device)
-                logits = self.model(x, lengths)
+                logits, _ = self.model(x, lengths)
                 preds = logits.argmax(dim=1).cpu()
                 all_preds.append(preds)
         return torch.cat(all_preds).numpy()

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from utils.data_loading import collate_fn
-from sklearn.metrics import f1_score, balanced_accuracy_score, recall_score
+from sklearn.metrics import f1_score, balanced_accuracy_score
 from torch.utils.data import WeightedRandomSampler, DataLoader
 import numpy as np
 
@@ -78,7 +78,7 @@ class CNN(nn.Module):
         out = self.fc(y)
         return out
     
-class CNN_model:
+class CNN_wrapper:
     def __init__(self, input_channels, num_classes, early_stopping=True, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
         """
         A wrapper that instantiates a TCN model and provides fit and predict methods.
@@ -103,7 +103,7 @@ class CNN_model:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=weight_decay)
         self.criterion = nn.CrossEntropyLoss()
         self.logger = logger
-        self.training_history = [] # {"epoch": 1, "train_loss": 0.5, "train_acc": 80, "val_loss": 0.6, "val_acc": 78},
+        self.training_history = []
 
 
 
@@ -194,7 +194,6 @@ class CNN_model:
             val_acc_epoch  = None
             val_macro_f1   = None
             val_bal_acc    = None
-            val_recall_cls = None
 
             if val_dataset is not None:
                 self.model.eval()
@@ -234,7 +233,6 @@ class CNN_model:
 
                 val_macro_f1   = f1_score(y_true, y_pred, average='macro')
                 val_bal_acc    = balanced_accuracy_score(y_true, y_pred)
-                val_recall_cls = recall_score(y_true, y_pred, average=None)
 
                 # early stopping on val loss (or swap in macro-F1 if desired)
                 if self.early_stopping:

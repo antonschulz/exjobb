@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.linear_model import RidgeClassifierCV
-from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score
 from sktime.transformations.panel.rocket import Rocket
 
 
@@ -37,9 +37,9 @@ def dataset_to_numpy(dataset, max_length=1000):
     
     return np.array(X_fixed), np.array(y_list)
 
-class Rocket_model():
+class ROCKET_wrapper():
     def __init__(self, num_kernels: int=10000, padding: int=800, logger=None, device=None):
-        self.model = Rocket(num_kernels=10000, random_state=42)
+        self.model = Rocket(num_kernels=num_kernels, random_state=42)
         self.clf = None
         self.fitted = False
         self.padding=padding
@@ -82,7 +82,6 @@ class Rocket_model():
         # Prepare a dict to hold metrics
         run_metrics = {"train_accuracy": train_acc}
 
-                # 5) If validation data provided, transform & evaluate it
         if val_dataset is not None:
             X_val_t     = self.model.transform(X_val)
             y_pred_val  = self.clf.predict(X_val_t)
@@ -99,10 +98,6 @@ class Rocket_model():
             val_bal_acc  = balanced_accuracy_score(y_val, y_pred_val)
             run_metrics["val_balanced_accuracy"] = val_bal_acc
 
-            # per-class recall
-            recalls = recall_score(y_val, y_pred_val, average=None)
-            for cls_idx, r in enumerate(recalls):
-                run_metrics[f"val_recall_class_{cls_idx}"] = r
 
         # 6) Log or store the metrics
         self.training_history.append(run_metrics)

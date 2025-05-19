@@ -12,7 +12,7 @@ from config import GLOBAL_CONFIG
 import torch
 
 # Import model modules
-from models import lstm_model, tcn_model, rocket_model, cnn_model
+from models import lstm_model,rocket_model, cnn_model
 
 def main(args):
     # Load dataset (should return train, validation, and test sets)
@@ -21,13 +21,11 @@ def main(args):
     
     # Select the model based on the command-line argument
     if args.model == 'lstm':
-        ModelClass = lstm_model.LSTM_model
-    elif args.model == 'tcn':
-        ModelClass = tcn_model.TCN_model
+        ModelClass = lstm_model.LSTM_wrapper
     elif args.model == 'rocket':
-        ModelClass = rocket_model.Rocket_model
+        ModelClass = rocket_model.ROCKET_wrapper
     elif args.model == 'cnn':
-        ModelClass = cnn_model.CNN_model
+        ModelClass = cnn_model.CNN_wrapper
     else:
         raise ValueError("Unsupported model type")
     
