@@ -123,37 +123,37 @@ class CNN_model:
         # define loaders
         #train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
         # 1) extract all labels from the dataset
-        all_labels = [train_dataset[i][1] for i in range(len(train_dataset))]
-        num_classes = self.model.fc.out_features
-        import numpy as np
-        counts = np.bincount(all_labels, minlength=num_classes)
+        # all_labels = [train_dataset[i][1] for i in range(len(train_dataset))]
+        # num_classes = self.model.fc.out_features
+        # import numpy as np
+        # counts = np.bincount(all_labels, minlength=num_classes)
 
-        # 2) build class_weights = 1/counts (then normalize so mean=1)
-        class_weights = torch.tensor(
-            counts.sum() / (counts * num_classes),
-            dtype=torch.float,
-            device=self.device
-        )
+        # # 2) build class_weights = 1/counts (then normalize so mean=1)
+        # class_weights = torch.tensor(
+        #     counts.sum() / (counts * num_classes),
+        #     dtype=torch.float,
+        #     device=self.device
+        # )
 
 
 
-        # inject into your loss
-        #self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+        # # inject into your loss
+        # #self.criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-        # 3) build per-sample weights for the sampler
-        sample_weights = class_weights[all_labels]  # tensor index by label
-        from torch.utils.data import WeightedRandomSampler
-        sampler = WeightedRandomSampler(
-            weights=sample_weights,
-            num_samples=len(sample_weights),
-            replacement=True
-        )
+        # # 3) build per-sample weights for the sampler
+        # sample_weights = class_weights[all_labels]  # tensor index by label
+        # from torch.utils.data import WeightedRandomSampler
+        # sampler = WeightedRandomSampler(
+        #     weights=sample_weights,
+        #     num_samples=len(sample_weights),
+        #     replacement=True
+        # )
 
         # 4) now create a loader that uses the sampler (no shuffle!)
         train_loader = DataLoader(
             train_dataset,
             batch_size=16,
-            sampler=sampler,
+            shuffle=True,#sampler=sampler,
             collate_fn=collate_fn   
         )
         if val_dataset is not None:
