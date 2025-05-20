@@ -6,7 +6,7 @@ from utils.data_loading import collate_fn
 from sklearn.metrics import f1_score, balanced_accuracy_score, recall_score
 from torch.utils.data import WeightedRandomSampler, DataLoader
 import numpy as np
-
+from .helpers import EarlyStopping
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation, dropout):
         super(ResidualBlock, self).__init__()
@@ -79,7 +79,7 @@ class CNN(nn.Module):
         return out
     
 class CNN_model:
-    def __init__(self, input_channels, num_classes, early_stopping=True, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
+    def __init__(self, input_channels, num_classes, early_stopping=True, early_stop_epochs=None, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
         """
         A wrapper that instantiates a TCN model and provides fit and predict methods.
         
@@ -103,7 +103,12 @@ class CNN_model:
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=weight_decay)
         self.criterion = nn.CrossEntropyLoss()
         self.logger = logger
+        self.early_stop_epochs = early_stop_epochs # how many epochs to train before early stop
         self.training_history = [] # {"epoch": 1, "train_loss": 0.5, "train_acc": 80, "val_loss": 0.6, "val_acc": 78},
+
+        # early stopping
+        self.patience = 1
+        self.min_delta = 1e-4
 
 
 
@@ -116,10 +121,10 @@ class CNN_model:
         Returns:
             self: So the method can be chained.
         """
-        patience = 35
-        epochs_no_improve = 0
-        min_delta = 1e-4
-        best_val_loss = float("inf")
+        stopper = EarlyStopping(
+            patience=self.patience,
+            min_delta=self.min_delta
+        )
         # define loaders
         #train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
         # 1) extract all labels from the dataset
@@ -160,8 +165,9 @@ class CNN_model:
             val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
 
         # Refactored Training Loop with Logger Integration
+        epochs_to_train = self.early_stop_epochs if self.early_stop_epochs else self.num_epochs
 
-        for epoch in range(self.num_epochs):
+        for epoch in range(epochs_to_train):
             # --- Training Phase ---
             self.model.train()
             running_train_loss = 0.0
@@ -236,17 +242,6 @@ class CNN_model:
                 val_bal_acc    = balanced_accuracy_score(y_true, y_pred)
                 val_recall_cls = recall_score(y_true, y_pred, average=None)
 
-                # early stopping on val loss (or swap in macro-F1 if desired)
-                if self.early_stopping:
-                    if best_val_loss - val_loss_epoch > min_delta:
-                        best_val_loss = val_loss_epoch
-                        epochs_no_improve = 0
-                    else:
-                        epochs_no_improve += 1
-                    if epochs_no_improve >= patience:
-                        print(f"No improvement for {patience} epochs. Stopping early.")
-                        break
-
             # --- Logging ---
             entry = {
                 "epoch": epoch + 1,
@@ -270,6 +265,12 @@ class CNN_model:
                 msg += (f"  |  Val Loss: {val_loss_epoch:.4f}, Val Acc: {val_acc_epoch:.2f}%  "
                         f"Macro-F1: {val_macro_f1:.3f}, BalAcc: {val_bal_acc:.3f}")
             print(msg)
+
+            if self.early_stopping and val_dataset and stopper(val_loss_epoch):
+                # record how many epochs we just did
+                self.early_stop_epochs = epoch + 1
+                print(f"No improvement for {self.patience} epochs. Stopping early at epoch {self.early_stop_epochs}.")
+                break
 
         return self
 

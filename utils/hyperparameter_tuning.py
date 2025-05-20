@@ -37,7 +37,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         model = ModelClass(**config, logger=logger, device=device)
 
         # Train the model on the training data.
-        train_model(model, train_data, val_data)  # You need to implement or import this function.
+        model = train_model(model, train_data, val_data)  # You need to implement or import this function.
 
         epoch_hist = model.training_history
         # Evaluate the model on the validation set to get a performance metric.
@@ -50,6 +50,8 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         if metrics['balanced_accuracy'] > best_metrics['balanced_accuracy']:
             best_metrics = metrics
             best_config = config
+            if model.early_stop_epochs:
+                best_config['early_stop_epochs'] = model.early_stop_epochs
 
     print("Best hyperparameter configuration found:", best_config)
     print("Best validation metric:", best_metrics)

@@ -3,6 +3,8 @@ from torch import Tensor, nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from utils.data_loading import collate_fn
+from .helpers import EarlyStopping
+
 
 
 class LSTMModel(nn.Module):
@@ -69,6 +71,7 @@ class LSTM_model:
         num_epochs: int = 10,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
+        early_stop_epochs=None,
         device=None,
         logger=None,
     ):
@@ -80,6 +83,11 @@ class LSTM_model:
         self.device = device or torch.device("cpu")
         self.logger = logger
         self.training_history = []
+        self.early_stop_epochs = early_stop_epochs
+
+        # early stopping
+        self.patience = 35
+        self.min_delta = 1e-4
 
         # instantiate your LSTMModel
         self.model = LSTMModel(
@@ -102,6 +110,14 @@ class LSTM_model:
         """
         Train for self.num_epochs, logging train/val loss & accuracy.
         """
+
+    
+        stopper = EarlyStopping(
+            patience=self.patience,
+            min_delta=self.min_delta
+        )
+
+
         train_loader = DataLoader(
             train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
         )
@@ -110,7 +126,9 @@ class LSTM_model:
                 val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
             )
 
-        for epoch in range(1, self.num_epochs + 1):
+        epochs_to_train = self.early_stop_epochs if self.early_stop_epochs else self.num_epochs
+
+        for epoch in range(1, epochs_to_train + 1):
             # --- train ---
             self.model.train()
             running_loss, correct, total = 0.0, 0, 0
@@ -150,6 +168,9 @@ class LSTM_model:
             else:
                 val_loss, val_acc = None, None
 
+
+
+
             # --- record & log ---
             record = {
                 "epoch": epoch,
@@ -166,6 +187,12 @@ class LSTM_model:
                 f"Val Loss={val_loss if val_loss is not None else 'N/A'}"
                 f"{', Val Acc={:.2f}%'.format(val_acc) if val_acc is not None else ''}"
             )
+
+            if self.early_stopping and val_dataset and stopper(val_loss):
+                # record how many epochs we just did
+                self.early_stop_epochs = epoch + 1
+                print(f"No improvement for {self.patience} epochs. Stopping early at epoch {self.early_stop_epochs}.")
+                break
         return self
 
     def predict(self, dataset, batch_size=1):

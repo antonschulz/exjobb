@@ -128,7 +128,7 @@ def sample_cnn_config():
         "input_channels": 2,
         "num_classes": 4,
         "early_stopping": True,
-        "num_epochs": random.choice([100]),
+        "num_epochs": random.choice([200]),
         "learning_rate": random.choice([0.001, 0.005, 5e-4]),
         "num_levels": random.choice([3, 6, 9, 12, 16]),
         "kernel_size": random.choice([1,3,5,9]),
