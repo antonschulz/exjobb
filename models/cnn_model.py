@@ -107,7 +107,7 @@ class CNN_model:
         self.training_history = [] # {"epoch": 1, "train_loss": 0.5, "train_acc": 80, "val_loss": 0.6, "val_acc": 78},
 
         # early stopping
-        self.patience = 1
+        self.patience = 35
         self.min_delta = 1e-4
 
 
