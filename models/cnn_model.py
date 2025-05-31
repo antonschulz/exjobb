@@ -55,7 +55,52 @@ class CNN(nn.Module):
             layers += [ResidualBlock(in_channels, num_filters, kernel_size, dilation, dropout)]
         self.tcn = nn.Sequential(*layers)
         self.fc = nn.Linear(num_filters, num_classes)
-        
+    
+    # def forward(self, x, lengths):
+    #     """
+    #     Args:
+    #         x (torch.Tensor): Input tensor of shape (batch, seq_length, channels)
+    #         lengths (torch.Tensor): Actual lengths of each sequence in the batch.
+    #     Returns:
+    #         torch.Tensor: Class logits of shape (batch, num_classes)
+    #     """
+    #     # 1) TCN feature extraction
+    #     x = x.transpose(1, 2)            # (B, C, T)
+    #     y = self.tcn(x)                  # (B, F, T)
+    #     y = y.transpose(1, 2)            # (B, T, F)
+
+    #     B, T, F = y.shape
+
+    #     # 2) Build mask of valid timesteps
+    #     mask_bool = (
+    #         torch.arange(T, device=y.device)
+    #             .unsqueeze(0).expand(B, T)
+    #             < lengths.unsqueeze(1)
+    #     )                                 # (B, T) boolean
+    #     mask = mask_bool.unsqueeze(2).float()  # (B, T, 1)
+
+    #     # 3) Mean pooling (over valid steps)
+    #     mean_pooled = (y * mask).sum(dim=1) / lengths.unsqueeze(1).float()  # (B, F)
+
+    #     # 4) Max pooling (over valid steps)
+    #     neg_inf = torch.finfo(y.dtype).min
+    #     y_masked = y.masked_fill(~mask_bool.unsqueeze(2), neg_inf)         # (B, T, F)
+    #     max_pooled, _ = y_masked.max(dim=1)                                # (B, F)
+
+    #     # 5) Proportion of Positive Values (PPV) pooling
+    #     #    zero out padding, threshold >0, then average
+    #     y_pos = (y > 0).float() * mask                                     # (B, T, F)
+    #     ppv_pooled = y_pos.sum(dim=1) / lengths.unsqueeze(1).float()       # (B, F)
+
+    #     # 6) Concatenate mean, max, and PPV
+    #     pooled = torch.cat([mean_pooled, max_pooled, ppv_pooled], dim=1)   # (B, 3F)
+
+    #     # 7) Final classification
+    #     out = self.fc(pooled)                                              # (B, num_classes)
+    #     return out
+
+
+    # original verson
     def forward(self, x, lengths):
         """
         Args:
@@ -76,6 +121,8 @@ class CNN(nn.Module):
         # Mask the output and compute the sum per sample, then divide by the sequence lengths.
         y = (y * mask).sum(dim=1) / lengths.unsqueeze(1).float()
         out = self.fc(y)
+
+        
         return out
     
 class CNN_model:
@@ -128,57 +175,81 @@ class CNN_model:
         # define loaders
         #train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
         # 1) extract all labels from the dataset
-        all_labels = [train_dataset[i][1] for i in range(len(train_dataset))]
-        num_classes = self.model.fc.out_features
-        import numpy as np
-        counts = np.bincount(all_labels, minlength=num_classes)
+        from collections import Counter
 
-        # # 2) build class_weights = 1/counts (then normalize so mean=1)
-        class_weights = torch.tensor(
-            counts.sum() / (counts * num_classes),
+        # 1) Gather your labels (list or 1D array of ints 0…C-1)
+        all_labels = [int(train_dataset[i][1]) for i in range(len(train_dataset))]
+        counts = Counter(all_labels)
+        num_classes = len(counts)
+        total_samples = sum(counts.values())
+
+        # 2) Base weights = inverse frequency
+        #    w_raw[k] = total_samples / (counts[k] * num_classes)
+        w_raw = torch.tensor(
+            [ total_samples / (counts[k] * num_classes) for k in range(num_classes) ],
             dtype=torch.float,
             device=self.device
         )
 
+        # 3) Normalize to sum to 1.0
+        w = w_raw / w_raw.sum()
 
+        # 4) Enforce a minimum fraction per class (e.g. 5%)
+        #min_frac = 0.025  # replace with X (in [0,1])
+        #w = torch.clamp(w, min=min_frac)
 
-        # # inject into your loss
-        self.criterion = nn.CrossEntropyLoss(weight=class_weights)
+        # 5) Renormalize so they still sum to 1.0
+        w = w / w.sum()
+       
+
+        # 6) Plug into your loss
+        #self.criterion = nn.CrossEntropyLoss(weight=w)
 
         # # 3) build per-sample weights for the sampler
-        # sample_weights = class_weights[all_labels]  # tensor index by label
-        # from torch.utils.data import WeightedRandomSampler
-        # sampler = WeightedRandomSampler(
-        #     weights=sample_weights,
-        #     num_samples=len(sample_weights),
-        #     replacement=True
-        # )
+        sample_weights = w[all_labels]  # tensor index by label
+        from torch.utils.data import WeightedRandomSampler
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
 
         # 4) now create a loader that uses the sampler (no shuffle!)
         train_loader = DataLoader(
             train_dataset,
-            batch_size=16,
-            shuffle=True,#sampler=sampler,
-            collate_fn=collate_fn   
+            batch_size=32,
+            sampler=sampler,
+            #shuffle=True,
+            collate_fn=collate_fn
         )
+
         if val_dataset is not None:
             val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, collate_fn=collate_fn)
 
         # Refactored Training Loop with Logger Integration
         epochs_to_train = self.early_stop_epochs if self.early_stop_epochs else self.num_epochs
 
+
         for epoch in range(epochs_to_train):
+            from collections import Counter
+
+        # initialize counter
+            label_counts = Counter()
+            
             # --- Training Phase ---
             self.model.train()
             running_train_loss = 0.0
             correct_train = 0
             total_train = 0
 
+
             for sequences, labels, lengths in train_loader:
                 # Move the data to device
+                label_counts.update(labels.tolist())
                 sequences = sequences.to(self.device)
                 labels = labels.to(self.device)
                 lengths = lengths.to(self.device)
+                
 
                 self.optimizer.zero_grad()
                 outputs = self.model(sequences, lengths)
@@ -194,6 +265,8 @@ class CNN_model:
 
             train_loss_epoch = running_train_loss / total_train
             train_accuracy_epoch = (correct_train / total_train) * 100
+            for label, count in sorted(label_counts.items()):
+                    print(f"Label {label}: {count} samples")
 
                     # --- Validation Phase ---
             val_loss_epoch = None

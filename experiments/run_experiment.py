@@ -16,7 +16,7 @@ from models import lstm_model, tcn_model, rocket_model, cnn_model
 
 def main(args):
     # Load dataset (should return train, validation, and test sets)
-    train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir, diff=args.diff, scaler=args.scaler, augment=args.augment)
+    train_data, val_data, test_data, full_training_data = load_dataset(args.data_dir, diff=True, scaler=args.scaler, augment=args.augment)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Select the model based on the command-line argument
@@ -126,7 +126,6 @@ if __name__ == '__main__':
     parser.add_argument('--num_runs', type=int, default=30, help='Number of final evaluation runs on test set')
     parser.add_argument('--evaluate', action=argparse.BooleanOptionalAction, help="If set, perform evaluation on the test set")
     parser.add_argument('--run_id', type=str, required=False, default=None, help='run_id for logger')
-    parser.add_argument('--diff', action=argparse.BooleanOptionalAction, help="If set, use diff between x,y and scaler")
     parser.add_argument('--augment', action=argparse.BooleanOptionalAction, help="If set, use data augmentation in pytorch dataloaders")
     parser.add_argument('--scaler', type=str, required=False, default=None, help='scaler string when diff is True. See util.py')
     """
@@ -140,7 +139,7 @@ if __name__ == '__main__':
     }
     """
 
-    parser.set_defaults(evaluate=False, default_model=False, diff=False, augment=True)
+    parser.set_defaults(evaluate=False, default_model=False, augment=True)
     
     
     args = parser.parse_args()

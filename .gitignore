@@ -3,6 +3,8 @@ logs
 datasets/examples
 datasets/FBD-SV-2024
 datasets/insects-tracks
+datasets/it-trajs_subtrajs*
+datasets/it-trajs_synthetic*
 *.ipynb
 *.pt
 *pth

@@ -12,11 +12,13 @@ import random
 
 # Custom Dataset with optional transform.
 class InsectDataset(Dataset):
-    def __init__(self, tracks_dict, transform=None):
+    def __init__(self, tracks_dict, transform=None, p_splice=0.1, min_len=5):
         self.tracks_dict = tracks_dict
         self.label_encoder = LabelEncoder()
         self.labels = []
         self.data = []
+        self.p_splice   = p_splice
+        self.min_len    = min_len
         self.transform = transform
         
         # Encode labels and prepare data
@@ -29,65 +31,93 @@ class InsectDataset(Dataset):
         # Encode labels to integers
         self.labels = self.label_encoder.fit_transform(self.labels)
 
+        # Build a map from label → list of indices for fast same‐label sampling
+        if self.transform:
+            self.indices_by_label = self._build_index_map()
+
+    def _build_index_map(self):
+        m = {}
+        for idx, lbl in enumerate(self.labels):
+            m.setdefault(lbl, []).append(idx)
+        return m
+
+    def _load_delta(self, idx: int) -> torch.Tensor:
+        """
+        Load the Δ‐sequence at index idx, return a torch.Tensor of shape (T,2).
+        Converts from NumPy if needed.
+        """
+        seq = self.data[idx]
+        if not isinstance(seq, torch.Tensor):
+            seq = torch.as_tensor(seq, dtype=torch.float32)
+        return seq
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         # Convert the stored array into a tensor.
-        x = torch.tensor(self.data[idx], dtype=torch.float32)
+        x = self._load_delta(idx)
         # Apply augmentation if a transform is provided.
-        if self.transform:
-            x = self.transform(x)
         y = torch.tensor(self.labels[idx], dtype=torch.long)
+        if self.transform:
+            # with prob p_splice, pick another same-label seq and splice
+            if random.random() < self.p_splice:
+                same_lbl_idxs = self.indices_by_label[self.labels[idx]]
+                # avoid picking itself if only one sample per label
+                if len(same_lbl_idxs) > 1:
+                    j = idx
+                    while j == idx:
+                        j = random.choice(same_lbl_idxs)
+                    delta2 = self._load_delta(j)
+                    x = splice_deltas(x, delta2, min_len=self.min_len)
+            x = self.transform(x)
         return x, y
 
 import math
 
-def augment_sequence(seq, noise_std=0.01, prob_rotate=0.5, max_rotate_angle=math.pi/2, translation_range=0.1):
+def splice_deltas(delta1: torch.Tensor,
+                  delta2: torch.Tensor,
+                  min_len: int = 5) -> torch.Tensor:
     """
-    Augments a sequence of (x, y) coordinates (each in [0,1]) by:
-      - With probability `prob_rotate`, rotating the entire sequence by a random angle.
-      - Applying a random translation in both x and y.
-      - Adding Gaussian noise.
-
-    Args:
-        seq (torch.Tensor): Tensor of shape (seq_len, 2) containing (x, y) coordinates.
-        noise_std (float): Standard deviation of Gaussian noise to add.
-        prob_rotate (float): Probability of applying a random rotation.
-        max_rotate_angle (float): Maximum rotation angle in radians (random angle ∈ [-max, max]).
-        translation_range (float): Maximum absolute translation offset for both x and y.
-
-    Returns:
-        torch.Tensor: The augmented sequence with values clamped to [0, 1].
+    Splice two delta‐sequences by cutting each in [min_len, T-min_len]
+    and concatenating the first part of the first to the second part of the second.
+    If either sequence is shorter than 2*min_len, just concatenate them whole.
     """
+    T1, T2 = delta1.size(0), delta2.size(0)
+
+    # Only cut if each sequence is at least 2*min_len long
+    if T1 < 2 * min_len or T2 < 2 * min_len:
+        return torch.cat([delta1, delta2], dim=0)
+
+    # safe to pick cut points in [min_len, T - min_len]
+    cut1 = random.randint(min_len, T1 - min_len)
+    cut2 = random.randint(min_len, T2 - min_len)
+    return torch.cat([delta1[:cut1], delta2[cut2:]], dim=0)
+
+def augment_sequence(seq, noise_std=0.01, prob_rotate=0.5, max_rotate_angle=math.pi):
+    """
+    Treat `seq` as a sequence of standardized (Δx, Δy) pairs.
+    Randomly rotates around (0,0) and adds Gaussian noise.
+    """
+    # ensure torch.Tensor
+    if not isinstance(seq, torch.Tensor):
+        seq = torch.as_tensor(seq, dtype=torch.float32)
+
     seq_aug = seq.clone()
-    seq_len = seq_aug.size(0)
 
-    # Random rotation
+    # random rotation
     if random.random() < prob_rotate:
         angle = random.uniform(-max_rotate_angle, max_rotate_angle)
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        R = torch.tensor([[cos_a, -sin_a],
+                          [ sin_a,  cos_a]],
+                         dtype=seq_aug.dtype,
+                         device=seq_aug.device)
+        seq_aug = seq_aug @ R.T
 
-        # Rotate around the sequence center (0.5, 0.5)
-        center = torch.tensor([0.5, 0.5], device=seq_aug.device)
-        seq_centered = seq_aug - center
-        rot_matrix = torch.tensor([[cos_a, -sin_a], [sin_a, cos_a]], device=seq_aug.device)
-        seq_rot = torch.matmul(seq_centered, rot_matrix.T) + center
-        seq_aug = seq_rot
-
-    # Apply a random translation in both x and y directions.
-    shift_x = random.uniform(-translation_range, translation_range)
-    shift_y = random.uniform(-translation_range, translation_range)
-    seq_aug[:, 0] += shift_x
-    seq_aug[:, 1] += shift_y
-
-    # # Add small Gaussian noise to both dimensions.
-    # noise = torch.randn_like(seq_aug) * noise_std
-    # seq_aug += noise
-
-    # Clamp values to ensure they remain within [0, 1]
-    seq_aug = seq_aug.clamp(0, 1)
+    # add noise
+    if noise_std > 0:
+        seq_aug = seq_aug + torch.randn_like(seq_aug) * noise_std
 
     return seq_aug
 
