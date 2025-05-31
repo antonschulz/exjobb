@@ -4,7 +4,7 @@ from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score, r
 from sktime.transformations.panel.rocket import Rocket
 
 
-def dataset_to_numpy(dataset, max_length=1000):
+def dataset_to_numpy(dataset, max_length=3000):
     """
     Converts a PyTorch dataset (where __getitem__ returns (x, y) and x is a tensor of shape (seq_len, 2))
     into NumPy arrays with shape (n_samples, 2, max_length), where sequences longer than max_length are truncated
@@ -38,8 +38,8 @@ def dataset_to_numpy(dataset, max_length=1000):
     return np.array(X_fixed), np.array(y_list)
 
 class Rocket_model():
-    def __init__(self, num_kernels: int=10000, padding: int=800, logger=None, device=None):
-        self.model = Rocket(num_kernels=10000, random_state=42)
+    def __init__(self, num_kernels: int=10000, padding: int=3000, logger=None, device=None):
+        self.model = Rocket(num_kernels=10000)
         self.clf = None
         self.fitted = False
         self.padding=padding
