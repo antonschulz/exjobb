@@ -36,26 +36,6 @@ def sample_rf_config():
     }
     return config
 
-
-def sample_tcn_config():
-    """
-    Sample a random hyperparameter configuration for an LSTM model.
-    Returns a dictionary with keys corresponding to hyperparameter names.
-    """
-    config = {
-        "input_channels": 2,
-        "num_classes": 4,
-        "early_stopping": True,
-        "num_epochs": random.choice([200]),
-        "learning_rate": random.choice([0.001, 0.005, 5e-4]),
-        "num_levels": random.choice([3, 6, 9, 12, 16]),
-        "kernel_size": random.choice([1,3,5,10]),
-        "dropout": random.choice([0, 0.1]),
-        "num_filters": random.choice([4, 8,16,32]),
-        "weight_decay": random.choice([0,1e-5]),
-    }
-    return config
-
 def sample_rocket_config():
     config = {
         "num_kernels": 10000, 
@@ -107,6 +87,7 @@ def default_cnn_config():
     config = {
         "input_channels": 2,
         "num_classes": 4,
+        "batch_size": 16,
         "early_stopping": True,
         "num_epochs": 100,
         "learning_rate": 1e-3,
@@ -128,33 +109,14 @@ def sample_cnn_config():
         "input_channels": 2,
         "num_classes": 4,
         "early_stopping": True,
+        "batch_size": random.choice([16, 32]),
         "num_epochs": random.choice([200]),
-        "learning_rate": random.choice([0.001, 0.005, 5e-4]),
-        "num_levels": random.choice([3, 6, 9, 12, 16]),
+        "learning_rate": random.choice([1e-3, 5e-3, 5e-4]),
+        "num_levels": random.choice([3, 6, 9, 12]),
         "kernel_size": random.choice([1,3,5,9]),
-        "dropout": random.choice([0, 0.1]),
+        "dropout": 0,
         "num_filters": random.choice([4, 8,16,32]),
         "weight_decay": random.choice([0,1e-5]),
-    }
-    return config
-
-
-def testing_tcn_config():
-    """
-    Sample a random hyperparameter configuration for an LSTM model.
-    Returns a dictionary with keys corresponding to hyperparameter names.
-    """
-    config = {
-        "input_channels": 2,
-        "num_classes": 4,
-        "early_stopping": True,
-        "num_epochs": 400,
-        "learning_rate": 0.0005,
-        "num_levels": 8,
-        "kernel_size": 3,
-        "dropout": 0,
-        "num_filters": 32,
-        "weight_decay": 0,
     }
     return config
 
@@ -162,20 +124,17 @@ def testing_tcn_config():
 
 hyperparameter_spaces = {
     "lstm": sample_lstm_config,
-    "tcn": sample_tcn_config,
     "rf": sample_rf_config,
     "cnn": sample_cnn_config,
     "rocket": sample_rocket_config,
     # defaults
     "lstm-default": default_lstm_config,
-    "tcn-default": testing_tcn_config, #TODO
     "cnn-default": default_cnn_config
 }
 
 # ----- Global configuration settings -----
 
 GLOBAL_CONFIG = {
-    "batch_size": 16,           # Batch size for deep learning experiments
     "data_dir": "../datasets/it-trajs",      # Default path to the dataset directory
     "random_seed": 42           # Global random seed for reproducibility
 }

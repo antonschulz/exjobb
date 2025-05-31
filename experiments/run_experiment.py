@@ -22,8 +22,6 @@ def main(args):
     # Select the model based on the command-line argument
     if args.model == 'lstm':
         ModelClass = lstm_model.LSTM_model
-    elif args.model == 'tcn':
-        ModelClass = tcn_model.TCN_model
     elif args.model == 'rocket':
         ModelClass = rocket_model.Rocket_model
     elif args.model == 'cnn':

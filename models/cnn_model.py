@@ -126,7 +126,7 @@ class CNN(nn.Module):
         return out
     
 class CNN_model:
-    def __init__(self, input_channels, num_classes, early_stopping=True, early_stop_epochs=None, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
+    def __init__(self, input_channels, batch_size, num_classes, early_stopping=True, early_stop_epochs=None, num_levels=3, kernel_size=3, dropout=0.3, num_filters=16, num_epochs=10, learning_rate=0.001, device=None, logger=None, weight_decay=None):
         """
         A wrapper that instantiates a TCN model and provides fit and predict methods.
         
@@ -143,6 +143,7 @@ class CNN_model:
         """
         self.num_epochs = num_epochs
         self.lr = learning_rate
+        self.batch_size = batch_size
         self.early_stopping=early_stopping
         self.device = device if device is not None else torch.device("cpu")
         self.model = CNN(input_channels, num_classes, num_levels, kernel_size, dropout, num_filters)
@@ -217,7 +218,7 @@ class CNN_model:
         # 4) now create a loader that uses the sampler (no shuffle!)
         train_loader = DataLoader(
             train_dataset,
-            batch_size=32,
+            batch_size=self.batch_size,
             sampler=sampler,
             #shuffle=True,
             collate_fn=collate_fn
@@ -341,7 +342,7 @@ class CNN_model:
 
             if self.early_stopping and val_dataset and stopper(val_loss_epoch):
                 # record how many epochs we just did
-                self.early_stop_epochs = epoch + 1
+                self.early_stop_epochs = epoch + 1 - self.patience
                 print(f"No improvement for {self.patience} epochs. Stopping early at epoch {self.early_stop_epochs}.")
                 break
 
