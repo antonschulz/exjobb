@@ -17,7 +17,7 @@ def sample_lstm_config():
         "num_epochs": random.choice([200]),
         "learning_rate": random.choice([1e-3, 5e-3, 5e-4]),
         "hidden_size": random.choice([64, 32, 16]),
-        "num_layers": random.choice([2,4,8]),
+        "num_layers": random.choice([1,2,4]),
         "fc_units": random.choice([[32], [32, 16]]),
         "bi_lstm": False,
         "dropout_lstm": random.choice([0.0, 0.1]),
