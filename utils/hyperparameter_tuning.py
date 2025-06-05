@@ -50,7 +50,7 @@ def tune_hyperparameters(ModelClass, train_data, val_data, tuning_iterations, mo
         if metrics['balanced_accuracy'] > best_metrics['balanced_accuracy']:
             best_metrics = metrics
             best_config = config
-            if model.early_stop_epochs:
+            if hasattr(model, "early_stop_epochs") and model.early_stop_epochs:
                 best_config['early_stop_epochs'] = model.early_stop_epochs
 
     print("Best hyperparameter configuration found:", best_config)

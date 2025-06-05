@@ -134,10 +134,13 @@ def load_dataset(data_dir: str, diff: bool=False, scaler: str=None, augment: boo
     Defaults to 0.8/0.2 train/val split and 0.8/0.2 train,val/test split.
     """
     train_path, test_path, val_path = f'{data_dir}/train', f'{data_dir}/test', f'{data_dir}/val'
-    
-    train_dict = read_dataset(train_path, interpolate=True, normalize=True)
-    val_dict = read_dataset(val_path, interpolate=True, normalize=True)
-    test_dict = read_dataset(test_path, interpolate=True, normalize=True)
+    if diff == True:
+        normalize = False
+    else:
+        normalize=True
+    train_dict = read_dataset(train_path, interpolate=True, normalize=normalize)
+    val_dict = read_dataset(val_path, interpolate=True, normalize=normalize)
+    test_dict = read_dataset(test_path, interpolate=True, normalize=normalize)
 
 
     if diff:

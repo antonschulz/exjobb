@@ -4,6 +4,8 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.utils.data import DataLoader
 from utils.data_loading import collate_fn
 from .helpers import EarlyStopping
+from sklearn.metrics import f1_score, balanced_accuracy_score, recall_score
+
 
 
 
@@ -63,6 +65,7 @@ class LSTM_model:
         input_size: int,
         num_classes: int,
         hidden_size=None,
+        early_stopping=True,
         num_layers: int = 2,
         fc_units=None,
         bi_lstm: bool = False,
@@ -71,6 +74,7 @@ class LSTM_model:
         num_epochs: int = 10,
         learning_rate: float = 1e-3,
         weight_decay: float = 0.0,
+        batch_size=16,
         early_stop_epochs=None,
         device=None,
         logger=None,
@@ -80,6 +84,8 @@ class LSTM_model:
         """
         self.num_epochs = num_epochs
         self.lr = learning_rate
+        self.early_stopping=early_stopping
+        self.batch_size = batch_size
         self.device = device or torch.device("cpu")
         self.logger = logger
         self.training_history = []
@@ -116,96 +122,200 @@ class LSTM_model:
             patience=self.patience,
             min_delta=self.min_delta
         )
+        from collections import Counter
 
+        # 1) Gather your labels (list or 1D array of ints 0…C-1)
+        all_labels = [int(train_dataset[i][1]) for i in range(len(train_dataset))]
+        counts = Counter(all_labels)
+        num_classes = len(counts)
+        total_samples = sum(counts.values())
 
-        train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+        # 2) Base weights = inverse frequency
+        #    w_raw[k] = total_samples / (counts[k] * num_classes)
+        w_raw = torch.tensor(
+            [ total_samples / (counts[k] * num_classes) for k in range(num_classes) ],
+            dtype=torch.float,
+            device=self.device
         )
+
+        # 3) Normalize to sum to 1.0
+        w = w_raw / w_raw.sum()
+
+        # 4) Enforce a minimum fraction per class (e.g. 5%)
+        #min_frac = 0.025  # replace with X (in [0,1])
+        #w = torch.clamp(w, min=min_frac)
+
+        # 5) Renormalize so they still sum to 1.0
+        w = w / w.sum()
+       
+
+        # 6) Plug into your loss
+        #self.criterion = nn.CrossEntropyLoss(weight=w)
+
+        # # 3) build per-sample weights for the sampler
+        sample_weights = w[all_labels]  # tensor index by label
+        from torch.utils.data import WeightedRandomSampler
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
+
+        # 4) now create a loader that uses the sampler (no shuffle!)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.batch_size,
+            sampler=sampler,
+            #shuffle=True,
+            collate_fn=collate_fn
+        )
+
         if val_dataset is not None:
             val_loader = DataLoader(
                 val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
             )
 
+                # Refactored Training Loop with Logger Integration
         epochs_to_train = self.early_stop_epochs if self.early_stop_epochs else self.num_epochs
 
-        for epoch in range(1, epochs_to_train + 1):
-            # --- train ---
+
+        for epoch in range(epochs_to_train):
+            from collections import Counter
+
+        # initialize counter
+            label_counts = Counter()
+            
+            # --- Training Phase ---
             self.model.train()
-            running_loss, correct, total = 0.0, 0, 0
-            for x, y, lengths in train_loader:
-                x, y, lengths = x.to(self.device), y.to(self.device), lengths.to(self.device)
+            running_train_loss = 0.0
+            correct_train = 0
+            total_train = 0
+
+
+            for sequences, labels, lengths in train_loader:
+                # Move the data to device
+                label_counts.update(labels.tolist())
+                sequences = sequences.to(self.device)
+                labels = labels.to(self.device)
+                lengths = lengths.to(self.device)
+                
+
                 self.optimizer.zero_grad()
-                logits = self.model(x, lengths)
-                loss = self.criterion(logits, y)
+                outputs = self.model(sequences, lengths)
+                loss = self.criterion(outputs, labels)
                 loss.backward()
                 self.optimizer.step()
 
-                bs = x.size(0)
-                running_loss += loss.item() * bs
-                preds = logits.argmax(dim=1)
-                total += bs
-                correct += (preds == y).sum().item()
+                batch_size = sequences.size(0)
+                running_train_loss += loss.item() * batch_size
+                _, predicted = torch.max(outputs, 1)
+                total_train += batch_size
+                correct_train += (predicted == labels).sum().item()
 
-            train_loss = running_loss / total
-            train_acc = 100 * correct / total
+            train_loss_epoch = running_train_loss / total_train
+            train_accuracy_epoch = (correct_train / total_train) * 100
+            for label, count in sorted(label_counts.items()):
+                    print(f"Label {label}: {count} samples")
 
-            # --- validate ---
+                    # --- Validation Phase ---
+            val_loss_epoch = None
+            val_acc_epoch  = None
+            val_macro_f1   = None
+            val_bal_acc    = None
+
             if val_dataset is not None:
                 self.model.eval()
-                v_loss, v_correct, v_total = 0.0, 0, 0
+                running_val_loss = 0.0
+                correct_val = 0
+                total_val = 0
+
+                all_val_preds = []
+                all_val_labels = []
+
                 with torch.no_grad():
-                    for x, y, lengths in val_loader:
-                        x, y, lengths = x.to(self.device), y.to(self.device), lengths.to(self.device)
-                        logits = self.model(x, lengths)
-                        loss = self.criterion(logits, y)
-                        bs = x.size(0)
-                        v_loss += loss.item() * bs
-                        preds = logits.argmax(dim=1)
-                        v_total += bs
-                        v_correct += (preds == y).sum().item()
-                val_loss = v_loss / v_total
-                val_acc = 100 * v_correct / v_total
-            else:
-                val_loss, val_acc = None, None
+                    for sequences, labels, lengths in val_loader:
+                        sequences, labels, lengths = (
+                            sequences.to(self.device),
+                            labels.to(self.device),
+                            lengths.to(self.device)
+                        )
+                        outputs = self.model(sequences, lengths)
+                        loss = self.criterion(outputs, labels)
 
+                        bs = sequences.size(0)
+                        running_val_loss += loss.item() * bs
+                        _, preds = torch.max(outputs, 1)
 
+                        total_val += bs
+                        correct_val += (preds == labels).sum().item()
 
+                        all_val_preds.append(preds.cpu())
+                        all_val_labels.append(labels.cpu())
 
-            # --- record & log ---
-            record = {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "train_acc": train_acc,
-                "val_loss": val_loss,
-                "val_acc": val_acc,
+                # aggregate
+                val_loss_epoch = running_val_loss / total_val
+                val_acc_epoch  = correct_val / total_val * 100
+
+                y_true = torch.cat(all_val_labels).numpy()
+                y_pred = torch.cat(all_val_preds).numpy()
+
+                val_macro_f1   = f1_score(y_true, y_pred, average='macro')
+                val_bal_acc    = balanced_accuracy_score(y_true, y_pred)
+
+            # --- Logging ---
+            entry = {
+                "epoch": epoch + 1,
+                "train_loss": train_loss_epoch,
+                "train_acc":  train_accuracy_epoch
             }
-            self.training_history.append(record)
+            if val_dataset is not None:
+                entry.update({
+                    "val_loss":       val_loss_epoch,
+                    "val_acc":        val_acc_epoch,
+                    "val_macro_f1":   val_macro_f1,
+                    "val_bal_acc":    val_bal_acc,
+                })
+            self.training_history.append(entry)
 
-            print(
-                f"Epoch {epoch}/{self.num_epochs}  "
-                f"Train Loss={train_loss:.4f}, Train Acc={train_acc:.2f}%  "
-                f"Val Loss={val_loss if val_loss is not None else 'N/A'}"
-                f"{', Val Acc={:.2f}%'.format(val_acc) if val_acc is not None else ''}"
-            )
+            # Print summary
+            msg = (f"Epoch {epoch+1}/{self.num_epochs}  "
+                f"Train Loss: {train_loss_epoch:.4f}, Train Acc: {train_accuracy_epoch:.2f}%")
+            if val_dataset is not None:
+                msg += (f"  |  Val Loss: {val_loss_epoch:.4f}, Val Acc: {val_acc_epoch:.2f}%  "
+                        f"Macro-F1: {val_macro_f1:.3f}, BalAcc: {val_bal_acc:.3f}")
+            print(msg)
 
-            if self.early_stopping and val_dataset and stopper(val_loss):
+            if self.early_stopping and val_dataset and stopper(val_loss_epoch):
                 # record how many epochs we just did
-                self.early_stop_epochs = epoch + 1
+                self.early_stop_epochs = epoch + 1 - self.patience
                 print(f"No improvement for {self.patience} epochs. Stopping early at epoch {self.early_stop_epochs}.")
                 break
+
         return self
 
     def predict(self, dataset, batch_size=1):
         """
-        Returns numpy array of predicted class indices for every sample in dataset.
+        Makes predictions for given inputs.
+        
+        Args:
+            input_dataset: A PyTorch Dataset where each sample is a tuple (input, label, length).
+                The input is a tensor of shape (seq_length, channels).
+                If lengths are not provided, assumes full-length sequences.
+                
+        Returns:
+            numpy.ndarray: Predicted class indices for all input samples.
         """
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+        data_loader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
         self.model.eval()
         all_preds = []
         with torch.no_grad():
-            for x, _, lengths in loader:
-                x, lengths = x.to(self.device), lengths.to(self.device)
-                logits = self.model(x, lengths)
-                preds = logits.argmax(dim=1).cpu()
-                all_preds.append(preds)
-        return torch.cat(all_preds).numpy()
+            for sequences, labels, lengths in data_loader:
+                sequences = sequences.to(self.device)
+                lengths = lengths.to(self.device)
+                outputs = self.model(sequences, lengths)
+                _, preds = torch.max(outputs, 1)
+                all_preds.append(preds.cpu())
+                
+        # Concatenate all predictions into a single tensor, then convert to numpy array.
+        all_preds = torch.cat(all_preds, dim=0)
+        return all_preds.numpy()

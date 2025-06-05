@@ -38,14 +38,14 @@ def dataset_to_numpy(dataset, max_length=3000):
     return np.array(X_fixed), np.array(y_list)
 
 class Rocket_model():
-    def __init__(self, num_kernels: int=10000, padding: int=3000, logger=None, device=None):
-        self.model = Rocket(num_kernels=10000)
+    def __init__(self, num_kernels: int=5000, padding: int=3000, logger=None, device=None):
+        self.model = Rocket(num_kernels=5000)
         self.clf = None
         self.fitted = False
         self.padding=padding
         self.logger=None
         self.training_history = []
-        self.clf = RidgeClassifierCV(alphas=np.logspace(-3, 3, 10), class_weight='balanced')
+        self.clf = RidgeClassifierCV(alphas=np.logspace(-3, 3, 5), class_weight='balanced')
 
     def fit(self, train_dataset, val_dataset=None):
         """
