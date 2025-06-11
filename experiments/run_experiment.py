@@ -10,6 +10,8 @@ from utils.evaluation import evaluate_model
 from utils.logger import ExperimentLogger
 from config import GLOBAL_CONFIG
 import torch
+from config import hyperparameter_spaces  # Import the mapping from model type to sampling functions
+
 
 # Import model modules
 from models import lstm_model, tcn_model, rocket_model, cnn_model
@@ -33,11 +35,17 @@ def main(args):
     logger.set_run_args(args)
     logger.set_global_config(GLOBAL_CONFIG)
     # Hyperparameter tuning (using train and validation sets)
-    model_parameter_space_name = f"{args.model}-default" if args.default_model else args.model
+    model_parameter_space_name = args.model
+    if args.default_model:
+        model_parameter_space_name = f"{args.model}-default"
+    if args.best_model:
+        model_parameter_space_name = f"{args.model}-best"
 
-    best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, model_parameter_space_name, logger)
-    print("Best hyperparameters found:", best_config)
-    
+    if args.tuning_iterations > 0:
+        best_config = tune_hyperparameters(ModelClass, train_data, val_data, args.tuning_iterations, model_parameter_space_name, logger)
+        print("Best hyperparameters found:", best_config)
+    else:
+        best_config = hyperparameter_spaces[model_parameter_space_name]()
     import numpy as np
 
     if args.evaluate:
@@ -126,6 +134,8 @@ if __name__ == '__main__':
     parser.add_argument('--run_id', type=str, required=False, default=None, help='run_id for logger')
     parser.add_argument('--augment', action=argparse.BooleanOptionalAction, help="If set, use data augmentation in pytorch dataloaders")
     parser.add_argument('--scaler', type=str, required=False, default=None, help='scaler string when diff is True. See util.py')
+    parser.add_argument('--best_model', action=argparse.BooleanOptionalAction, help="If set, use only best hyperparameters for model")
+
     """
         scalers = {
         "standard": StandardScaler(),
@@ -137,7 +147,7 @@ if __name__ == '__main__':
     }
     """
 
-    parser.set_defaults(evaluate=False, default_model=False, augment=True)
+    parser.set_defaults(evaluate=False, default_model=False, augment=True, best_modle=False)
     
     
     args = parser.parse_args()

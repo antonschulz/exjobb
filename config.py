@@ -26,6 +26,29 @@ def sample_lstm_config():
     }
     return config
 
+def best_lstm_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_size": 2,
+        "num_classes": 4,
+        "early_stopping": True,
+        "batch_size": 16,
+        "num_epochs": 200,
+        "learning_rate": 5e-3,
+        "hidden_size": 32,
+        "num_layers": 4,
+        "fc_units": [32],
+        "bi_lstm": False,
+        "dropout_lstm": 0,
+        "dropout_fc": 0,
+        "weight_decay": 0.0,
+        "early_stop_epochs": 52,
+    }
+    return config
+
 def sample_rocket_config():
     config = {
         "num_kernels": 10000, 
@@ -100,7 +123,9 @@ hyperparameter_spaces = {
     "rocket": sample_rocket_config,
     # defaults
     "lstm-default": default_lstm_config,
-    "cnn-default": default_cnn_config
+    "cnn-default": default_cnn_config,
+    # best
+    "lstm-best": best_lstm_config
 }
 
 # ----- Global configuration settings -----
