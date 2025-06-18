@@ -147,7 +147,7 @@ if __name__ == '__main__':
     }
     """
 
-    parser.set_defaults(evaluate=False, default_model=False, augment=True, best_modle=False)
+    parser.set_defaults(evaluate=False, default_model=False, augment=True, best_model=False)
     
     
     args = parser.parse_args()

@@ -115,6 +115,28 @@ def sample_cnn_config():
     }
     return config
 
+def best_cnn_config():
+    """
+    Sample a random hyperparameter configuration for an LSTM model.
+    Returns a dictionary with keys corresponding to hyperparameter names.
+    """
+    config = {
+        "input_channels": 2,
+        "num_classes": 4,
+        "early_stopping": True,
+        "batch_size": 32,
+        "num_epochs": 200,
+        "learning_rate": 1e-3,
+        "num_levels": 3,
+        "kernel_size": 5,
+        "dropout": 0,
+        "num_filters": 16,
+        "weight_decay": 1e-5,
+        "early_stop_epochs": 106
+    }
+    return config
+
+
 
 
 hyperparameter_spaces = {
@@ -125,7 +147,8 @@ hyperparameter_spaces = {
     "lstm-default": default_lstm_config,
     "cnn-default": default_cnn_config,
     # best
-    "lstm-best": best_lstm_config
+    "lstm-best": best_lstm_config,
+    "cnn-best": best_cnn_config
 }
 
 # ----- Global configuration settings -----
